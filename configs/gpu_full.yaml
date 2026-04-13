@@ -1,0 +1,46 @@
+# audio2report — GPU full-quality preset
+# Best accuracy: large-v3 model, float16, full diarization.
+# Requires a CUDA GPU and a Hugging Face token (set HF_TOKEN env var).
+
+mode: dual
+cache: true
+
+audio:
+  inter_file_gap_sec: 0.5
+  min_duration_sec: 1.0
+
+transcription:
+  backend: whisperx
+  model: large-v3
+  language: null
+  compute_type: float16
+  batch_size: 16       # increase if VRAM allows
+  device: cuda
+
+diarization:
+  enabled: true
+  hf_token: null       # reads from HF_TOKEN environment variable
+
+alignment:
+  anchor_sim_threshold: 0.90
+  min_anchor_text_len: 25
+
+deduplication:
+  enabled: true
+  sim_threshold: 0.86
+  time_tolerance_sec: 2.5
+  min_text_len: 18
+
+output:
+  formats:
+    - json
+    - csv
+    - txt
+  include_suppressed: true
+
+llm:
+  enabled: false
+  provider: ollama
+  model: llama3
+  base_url: "http://localhost:11434"
+  prompt_template: audit_report

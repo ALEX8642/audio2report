@@ -1,0 +1,55 @@
+---
+# audio2report — Docker Compose
+#
+# Set environment variables to control paths:
+#   INPUT_DIR  — folder containing the 'prime' audio subfolders (default: ./recordings)
+#   OUTPUT_DIR — where outputs are written                       (default: ./output)
+#   HF_TOKEN   — Hugging Face token for diarization (GPU service only)
+#
+# Examples:
+#   docker compose run audio2report-cpu dual /data/in --out /data/out
+#   docker compose run audio2report-gpu dual /data/in --out /data/out --diarize --config /app/configs/gpu_full.yaml
+
+services:
+
+  # -----------------------------------------------------------------------
+  # CPU service — no GPU required, suitable for any machine
+  # -----------------------------------------------------------------------
+  audio2report-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    image: audio2report:cpu
+    volumes:
+      - "${INPUT_DIR:-./recordings}:/data/in:ro"
+      - "${OUTPUT_DIR:-./output}:/data/out"
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+
+  # -----------------------------------------------------------------------
+  # GPU service — requires NVIDIA Container Toolkit
+  # -----------------------------------------------------------------------
+  audio2report-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: audio2report:gpu
+    volumes:
+      - "${INPUT_DIR:-./recordings}:/data/in:ro"
+      - "${OUTPUT_DIR:-./output}:/data/out"
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  huggingface_cache:
+    # Named volume keeps model weights between runs — avoids re-downloading
+    # on every container start.

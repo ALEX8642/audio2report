@@ -1,0 +1,40 @@
+# audio2report — CPU-optimised preset
+# Trades accuracy for speed: smaller model, int8 quantisation, no diarization.
+# Suitable for quick drafts or machines without a GPU.
+
+mode: dual
+cache: true
+
+audio:
+  inter_file_gap_sec: 0.5
+  min_duration_sec: 1.0
+
+transcription:
+  backend: whisperx
+  model: medium        # faster than large-v3; acceptable accuracy for most meetings
+  language: null
+  compute_type: int8   # required for CPU; avoids the float16 → int8 auto-downgrade warning
+  batch_size: 4
+  device: cpu
+
+diarization:
+  enabled: false       # pyannote is slow on CPU; disable for speed
+
+alignment:
+  anchor_sim_threshold: 0.90
+  min_anchor_text_len: 25
+
+deduplication:
+  enabled: true
+  sim_threshold: 0.86
+  time_tolerance_sec: 2.5
+  min_text_len: 18
+
+output:
+  formats:
+    - json
+    - txt
+  include_suppressed: true
+
+llm:
+  enabled: false

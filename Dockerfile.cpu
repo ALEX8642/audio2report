@@ -1,0 +1,35 @@
+# audio2report — CPU image
+# Base: official Python 3.11 slim.  No CUDA required.
+# Usage:
+#   docker build -f Dockerfile.cpu -t audio2report:cpu .
+#   docker run --rm -v ./recordings:/data/in:ro -v ./output:/data/out \
+#       audio2report:cpu dual /data/in --out /data/out
+
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies before copying source so the layer is cached
+COPY pyproject.toml .
+COPY audio2report/ ./audio2report/
+COPY configs/ ./configs/
+
+# Install the package with the whisperx extra.
+# WhisperX will download model weights on first run (cached in /root/.cache).
+RUN pip install --no-cache-dir ".[whisperx]"
+
+# Default model cache directory (mount as a volume for persistence)
+ENV HF_HOME=/root/.cache/huggingface
+VOLUME ["/root/.cache/huggingface", "/data/in", "/data/out"]
+
+ENTRYPOINT ["audio2report"]
+CMD ["--help"]

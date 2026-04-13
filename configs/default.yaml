@@ -1,0 +1,46 @@
+# audio2report — default configuration
+# All values shown here match the built-in defaults.
+# Copy this file and edit as needed.
+
+mode: dual
+cache: true   # skip re-transcription when per-file JSON already exists
+
+audio:
+  inter_file_gap_sec: 0.5   # gap inserted between sequential files in a folder timeline
+  min_duration_sec: 1.0     # files shorter than this are skipped before ASR
+
+transcription:
+  backend: whisperx
+  model: large-v3
+  language: null            # null = auto-detect
+  compute_type: float16     # float16 (GPU), int8 (CPU) — auto-downgraded on CPU
+  batch_size: 8
+  device: null              # null = auto-detect (cuda if available, else cpu)
+
+diarization:
+  enabled: false
+  hf_token: null            # null = read from HF_TOKEN environment variable
+
+alignment:
+  anchor_sim_threshold: 0.90   # minimum text similarity to count as an alignment anchor
+  min_anchor_text_len: 25      # minimum normalised-text length for anchor candidates
+
+deduplication:
+  enabled: true
+  sim_threshold: 0.86         # minimum text similarity to suppress a cross-mic duplicate
+  time_tolerance_sec: 2.5     # maximum timestamp gap (after alignment) to match as duplicate
+  min_text_len: 18            # minimum normalised-text length for dedup candidates
+
+output:
+  formats:
+    - json
+    - csv
+    - txt
+  include_suppressed: true    # write full segment trace (suppressed segments included)
+
+llm:
+  enabled: false
+  provider: ollama            # ollama | openai | anthropic
+  model: llama3
+  base_url: "http://localhost:11434"
+  prompt_template: audit_report

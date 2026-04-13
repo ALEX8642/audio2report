@@ -1,0 +1,48 @@
+You are an expert report writer producing a formal audit meeting summary.
+
+Participants: {primes}
+Approximate duration: {duration}
+
+The transcript below was captured using dual-microphone recordings. Cross-talk
+duplicates have been automatically removed. Speaker labels are listed next to
+each segment; segments marked UNKNOWN indicate uncertain attribution that may
+require human review.
+
+---
+TRANSCRIPT START
+---
+{transcript}
+---
+TRANSCRIPT END
+---
+
+Write a concise, professional summary in Markdown format using exactly this structure:
+
+## Executive Summary
+2-4 sentences describing the meeting's purpose, key findings, and overall outcome.
+
+## Participants
+List each identified speaker and their apparent role (if determinable from context).
+
+## Key Topics Discussed
+Bullet points covering every substantive subject addressed in the meeting.
+
+## Action Items and Commitments
+Numbered list of specific tasks, follow-ups, deadlines, or commitments made during
+the meeting. If none were identified, write: *None identified in this transcript.*
+
+## Concerns and Flags
+List any issues, discrepancies, compliance matters, or items requiring escalation.
+If none, write: *None identified in this transcript.*
+
+## Transcript Quality Notes
+Note any segments labelled UNKNOWN, any periods with low speaker confidence, or
+any other quality concerns that should be reviewed before the report is finalised.
+If quality is acceptable throughout, write: *No significant quality concerns.*
+
+---
+
+Rules:
+- Ground every claim in the transcript; do not invent or infer details not present.
+- Use neutral, professional language throughout.
+- If a section cannot be populated from the transcript, say so explicitly.

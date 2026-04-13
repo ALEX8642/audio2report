@@ -1,0 +1,43 @@
+# audio2report — GPU image
+# Base: NVIDIA CUDA 12.1 + cuDNN 8 on Ubuntu 22.04.
+# Requires NVIDIA Container Toolkit on the host.
+# Usage:
+#   docker build -f Dockerfile.gpu -t audio2report:gpu .
+#   docker run --rm --gpus all \
+#       -v ./recordings:/data/in:ro -v ./output:/data/out \
+#       -e HF_TOKEN=$HF_TOKEN \
+#       audio2report:gpu dual /data/in --out /data/out --diarize
+
+FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-dev \
+        python3-pip \
+        ffmpeg \
+        git \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3    /usr/bin/python
+
+WORKDIR /app
+
+COPY pyproject.toml .
+COPY audio2report/ ./audio2report/
+COPY configs/ ./configs/
+
+# Install with GPU + diarization extras.
+# torch (CUDA) pulled in by whisperx; pyannote.audio for diarization.
+RUN pip install --no-cache-dir ".[whisperx,diarize]"
+
+ENV HF_HOME=/root/.cache/huggingface
+VOLUME ["/root/.cache/huggingface", "/data/in", "/data/out"]
+
+ENTRYPOINT ["audio2report"]
+CMD ["--help"]
