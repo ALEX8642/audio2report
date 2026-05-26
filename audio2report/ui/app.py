@@ -20,7 +20,8 @@ def main() -> None:
     app_path = Path(__file__).resolve()
     sys.exit(
         subprocess.call(
-            ["streamlit", "run", str(app_path), "--server.headless", "false"]
+            [sys.executable, "-m", "streamlit", "run", str(app_path),
+             "--server.headless", "false"]
             + sys.argv[1:]
         )
     )
