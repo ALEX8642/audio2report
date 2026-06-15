@@ -48,9 +48,9 @@ class WhisperXTranscriber:
         self._device = device
         self._compute_type = auto_compute_type(config.compute_type, device)
 
-        self._model = None
-        self._align_model = None
-        self._align_metadata = None
+        self._model: Any = None
+        self._align_model: Any = None
+        self._align_metadata: Any = None
         self._align_language: str | None = None
 
     # ------------------------------------------------------------------

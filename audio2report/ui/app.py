@@ -183,6 +183,7 @@ if __name__ == "__main__":
             text=True,
             bufsize=1,
         )
+        assert proc.stdout is not None
         for line in proc.stdout:
             st.session_state["log_lines"].append(line.rstrip())
             visible = "\n".join(st.session_state["log_lines"][-200:])

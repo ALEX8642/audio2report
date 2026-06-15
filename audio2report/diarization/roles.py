@@ -8,7 +8,7 @@ OTHER_ON_THIS_MIC.
 """
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 from audio2report.models import SegmentRecord
 
@@ -27,14 +27,15 @@ def assign_diar_roles_per_channel(segments: list[SegmentRecord]) -> None:
         by_channel_file[(seg.channel_folder, seg.file_index)].append(seg)
 
     for file_segments in by_channel_file.values():
-        durations: Counter = Counter()
+        durations: dict[str, float] = {}
         for seg in file_segments:
             if seg.diar_speaker_raw:
-                durations[seg.diar_speaker_raw] += max(
+                key = seg.diar_speaker_raw
+                durations[key] = durations.get(key, 0.0) + max(
                     0.0, seg.local_seg_end_sec - seg.local_seg_start_sec
                 )
 
-        dominant = durations.most_common(1)[0][0] if durations else None
+        dominant = max(durations, key=durations.__getitem__) if durations else None
 
         for seg in file_segments:
             if not seg.diar_speaker_raw:
