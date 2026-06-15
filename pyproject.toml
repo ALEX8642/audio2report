@@ -22,7 +22,7 @@ dependencies = [
 whisperx = ["whisperx"]
 diarize   = ["pyannote.audio>=3.0"]
 llm       = ["openai>=1.0", "httpx>=0.25"]
-ui        = ["streamlit>=1.30"]
+ui        = ["streamlit>=1.30", "whisperx"]
 full      = ["audio2report[whisperx,diarize,llm,ui]"]
 dev       = ["pytest>=7.0", "pytest-cov", "ruff", "mypy"]
 
