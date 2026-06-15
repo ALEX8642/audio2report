@@ -12,10 +12,7 @@ speaker_score_map
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
-
 from audio2report.models import SegmentRecord
-
 
 # ---------------------------------------------------------------------------
 # Retention scoring (which duplicate copy to keep)
@@ -36,7 +33,7 @@ def retention_score(seg: SegmentRecord) -> float:
 def choose_primary_from_pair(
     sa: SegmentRecord,
     sb: SegmentRecord,
-) -> Tuple[SegmentRecord, SegmentRecord, str, float]:
+) -> tuple[SegmentRecord, SegmentRecord, str, float]:
     """
     Choose which of a duplicate pair to keep based solely on quality signals.
 
@@ -58,8 +55,8 @@ def choose_primary_from_pair(
 
 def speaker_score_map(
     seg: SegmentRecord,
-    peer_match: Optional[SegmentRecord],
-) -> Dict[str, float]:
+    peer_match: SegmentRecord | None,
+) -> dict[str, float]:
     """
     Build a score map for possible speaker labels.
 
@@ -68,7 +65,7 @@ def speaker_score_map(
         - RMS loudness differential vs peer mic
         - cross-mic diarization agreement
     """
-    scores: Dict[str, float] = {
+    scores: dict[str, float] = {
         seg.channel_prime: 0.0,
         "THIRD_SPEAKER": 0.0,
         "OTHER_OR_THIRD_SPEAKER": 0.0,
@@ -109,15 +106,15 @@ def speaker_score_map(
 
 
 def finalize_speaker_from_scores(
-    score_map: Dict[str, float],
-) -> Tuple[str, float, List[str], str]:
+    score_map: dict[str, float],
+) -> tuple[str, float, list[str], str]:
     """Convert a score map into (label, confidence, flags, decision_basis)."""
     ranked = sorted(score_map.items(), key=lambda kv: kv[1], reverse=True)
     best_label, best_score = ranked[0]
     second_score = ranked[1][1] if len(ranked) > 1 else -999.0
     margin = best_score - second_score
 
-    flags: List[str] = []
+    flags: list[str] = []
     basis = f"best={best_label}:{best_score:.2f}, margin={margin:.2f}, scores={score_map}"
 
     if margin < 0.5:
@@ -135,8 +132,8 @@ def finalize_speaker_from_scores(
 
 def assign_speaker_for_kept_segment(
     seg: SegmentRecord,
-    peer_match: Optional[SegmentRecord],
-) -> Tuple[str, float, List[str], Dict[str, float], str]:
+    peer_match: SegmentRecord | None,
+) -> tuple[str, float, list[str], dict[str, float], str]:
     """
     Assign a final speaker label to *seg* using multi-signal scoring.
 

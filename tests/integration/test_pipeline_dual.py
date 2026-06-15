@@ -304,7 +304,7 @@ class TestDualMicPipelineOutputFiles:
     def test_txt_contains_speaker_labels(self):
         content = (self.out / "canonical_transcript.txt").read_text()
         # Every kept segment line should have a speaker label
-        lines = [l for l in content.splitlines() if l.strip()]
+        lines = [ln for ln in content.splitlines() if ln.strip()]
         assert len(lines) > 0
         for line in lines:
             assert ":" in line, f"Line missing speaker label: {line!r}"

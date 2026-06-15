@@ -21,7 +21,6 @@ WORKDIR /app
 # Install Python dependencies before copying source so the layer is cached
 COPY pyproject.toml .
 COPY audio2report/ ./audio2report/
-COPY configs/ ./configs/
 
 # Install the package with the whisperx extra.
 # WhisperX will download model weights on first run (cached in /root/.cache).

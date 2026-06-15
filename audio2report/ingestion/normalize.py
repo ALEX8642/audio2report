@@ -4,7 +4,6 @@ from __future__ import annotations
 import math
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
@@ -42,7 +41,7 @@ def is_audio_too_short_or_silent(wav_path: Path, min_duration: float = 1.0) -> b
     return dur < min_duration
 
 
-def rms_dbfs_for_region(wav_path: str, start_sec: float, end_sec: float) -> Optional[float]:
+def rms_dbfs_for_region(wav_path: str, start_sec: float, end_sec: float) -> float | None:
     """Return RMS dBFS for the given time region, or None on failure."""
     try:
         import soundfile as sf

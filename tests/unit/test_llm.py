@@ -13,15 +13,12 @@ from __future__ import annotations
 
 import json
 import sys
-from io import StringIO
-from pathlib import Path
-from typing import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from audio2report.config import LLMConfig
-from audio2report.llm.base import get_provider, AbstractLLMProvider
+from audio2report.llm.base import AbstractLLMProvider, get_provider
 from audio2report.llm.ollama_provider import OllamaProvider
 from audio2report.llm.openai_provider import OpenAIProvider
 from audio2report.llm.report import (
@@ -30,7 +27,6 @@ from audio2report.llm.report import (
     load_transcript_text,
 )
 from audio2report.models import RunMeta
-
 
 # ---------------------------------------------------------------------------
 # Helpers

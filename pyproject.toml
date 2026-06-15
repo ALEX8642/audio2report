@@ -32,10 +32,15 @@ audio2report-ui = "audio2report.ui.app:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["audio2report"]
+include = ["audio2report/configs/*.yaml"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

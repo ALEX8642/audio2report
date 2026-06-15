@@ -7,7 +7,7 @@ can transcribe many files without reloading weights each time.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from audio2report._log import get_logger
 from audio2report.config import TranscriptionConfig
@@ -16,7 +16,7 @@ from audio2report.utils import auto_compute_type
 logger = get_logger(__name__)
 
 
-def _is_effectively_empty(result: Dict[str, Any]) -> bool:
+def _is_effectively_empty(result: dict[str, Any]) -> bool:
     segments = result.get("segments") or []
     if not segments:
         return True
@@ -51,7 +51,7 @@ class WhisperXTranscriber:
         self._model = None
         self._align_model = None
         self._align_metadata = None
-        self._align_language: Optional[str] = None
+        self._align_language: str | None = None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -101,8 +101,8 @@ class WhisperXTranscriber:
         wav_path: Path,
         *,
         diarize: bool = False,
-        hf_token: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        hf_token: str | None = None,
+    ) -> dict[str, Any]:
         try:
             import whisperx
         except ImportError as exc:
@@ -111,7 +111,7 @@ class WhisperXTranscriber:
         self._ensure_model()
 
         audio = whisperx.load_audio(str(wav_path))
-        result: Dict[str, Any] = self._model.transcribe(audio, batch_size=self._config.batch_size)
+        result: dict[str, Any] = self._model.transcribe(audio, batch_size=self._config.batch_size)
 
         if _is_effectively_empty(result):
             result["diarization_segments"] = []

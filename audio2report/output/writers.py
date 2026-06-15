@@ -5,23 +5,22 @@ import csv
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from audio2report.config import OutputConfig
 from audio2report.models import RunResult, SegmentRecord
-from audio2report.utils import dump_json, format_hms, make_json_safe
-
+from audio2report.utils import dump_json, format_hms
 
 # ---------------------------------------------------------------------------
 # Individual writers
 # ---------------------------------------------------------------------------
 
-def write_json(path: Path, rows: List[SegmentRecord], extra: Dict[str, Any]) -> None:
+def write_json(path: Path, rows: list[SegmentRecord], extra: dict[str, Any]) -> None:
     payload = {"meta": extra, "segments": [asdict(r) for r in rows]}
     dump_json(path, payload)
 
 
-def write_csv(path: Path, rows: List[SegmentRecord]) -> None:
+def write_csv(path: Path, rows: list[SegmentRecord]) -> None:
     fields = [
         "uid", "speaker_final", "speaker_confidence", "retention_score_value",
         "speaker_score_detail", "speaker_decision_basis",
@@ -35,7 +34,7 @@ def write_csv(path: Path, rows: List[SegmentRecord]) -> None:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         for r in rows:
-            row: Dict[str, Any] = {}
+            row: dict[str, Any] = {}
             for k in fields:
                 if k == "flags":
                     row[k] = ";".join(r.flags)
@@ -50,7 +49,7 @@ def write_csv(path: Path, rows: List[SegmentRecord]) -> None:
             w.writerow(row)
 
 
-def write_txt(path: Path, rows: List[SegmentRecord]) -> None:
+def write_txt(path: Path, rows: list[SegmentRecord]) -> None:
     """Write all kept segments with timestamps, speaker, and flag annotations."""
     with path.open("w", encoding="utf-8") as f:
         for r in rows:
@@ -62,7 +61,7 @@ def write_txt(path: Path, rows: List[SegmentRecord]) -> None:
             f.write(f"{ts} {speaker}: {r.text}{flag_text}\n")
 
 
-def write_clean_txt(path: Path, rows: List[SegmentRecord]) -> None:
+def write_clean_txt(path: Path, rows: list[SegmentRecord]) -> None:
     """Write post-processed segments — clean, no flag annotations."""
     with path.open("w", encoding="utf-8") as f:
         for r in rows:

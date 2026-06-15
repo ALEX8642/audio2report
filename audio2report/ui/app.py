@@ -10,7 +10,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 # ---------------------------------------------------------------------------
 # Entry point (called by the audio2report-ui console script)
 # ---------------------------------------------------------------------------

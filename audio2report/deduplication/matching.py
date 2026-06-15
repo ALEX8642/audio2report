@@ -21,20 +21,19 @@ This version is O(n log n):
 from __future__ import annotations
 
 import bisect
-from typing import List
 
 from audio2report.models import PairMatch, SegmentRecord
 from audio2report.utils import normalize_text, text_similarity
 
 
 def match_segments_across_channels(
-    a_segments: List[SegmentRecord],
-    b_segments: List[SegmentRecord],
+    a_segments: list[SegmentRecord],
+    b_segments: list[SegmentRecord],
     *,
     time_tolerance_sec: float = 2.5,
     sim_threshold: float = 0.86,
     min_text_len: int = 18,
-) -> List[PairMatch]:
+) -> list[PairMatch]:
     """
     Return a list of cross-channel duplicate pairs.
 
@@ -42,7 +41,7 @@ def match_segments_across_channels(
     Segments shorter than *min_text_len* (after normalisation) are ignored to
     avoid spurious matches on short acknowledgements.
     """
-    matches: List[PairMatch] = []
+    matches: list[PairMatch] = []
     used_b: set = set()
 
     # Pre-compute sorted B start times for binary search

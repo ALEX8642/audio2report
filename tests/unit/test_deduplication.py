@@ -5,7 +5,6 @@ import pytest
 
 from audio2report.deduplication.matching import match_segments_across_channels
 from audio2report.deduplication.scoring import (
-    assign_speaker_for_kept_segment,
     choose_primary_from_pair,
     finalize_speaker_from_scores,
     retention_score,

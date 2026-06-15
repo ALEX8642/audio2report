@@ -5,8 +5,7 @@ import json
 import re
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
-
+from typing import Any
 
 AUDIO_EXTS = {
     ".wav", ".mp3", ".m4a", ".aac", ".flac",
@@ -48,7 +47,7 @@ def text_similarity(a: str, b: str) -> float:
 # Interval helpers
 # ---------------------------------------------------------------------------
 
-def merge_intervals(intervals: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+def merge_intervals(intervals: list[tuple[float, float]]) -> list[tuple[float, float]]:
     if not intervals:
         return []
     intervals = sorted(intervals)
@@ -94,7 +93,7 @@ def load_json(path: Path) -> Any:
 # Device helpers
 # ---------------------------------------------------------------------------
 
-def pick_device(device_arg: Optional[str]) -> str:
+def pick_device(device_arg: str | None) -> str:
     if device_arg:
         return device_arg
     try:

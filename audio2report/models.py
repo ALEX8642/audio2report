@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 
 @dataclass
@@ -34,20 +33,20 @@ class SegmentRecord:
     global_start_sec: float
     global_end_sec: float
     text: str
-    avg_logprob: Optional[float]
-    no_speech_prob: Optional[float]
-    diar_speaker_raw: Optional[str]
-    diar_speaker_role: Optional[str]
-    rms_dbfs: Optional[float]
-    speaker_final: Optional[str]
-    speaker_confidence: Optional[float]
-    duplicate_of: Optional[str]
+    avg_logprob: float | None
+    no_speech_prob: float | None
+    diar_speaker_raw: str | None
+    diar_speaker_role: str | None
+    rms_dbfs: float | None
+    speaker_final: str | None
+    speaker_confidence: float | None
+    duplicate_of: str | None
     keep: bool
     # fields with defaults must follow fields without defaults
-    flags: List[str] = field(default_factory=list)
-    retention_score_value: Optional[float] = None
-    speaker_score_detail: Optional[Dict[str, float]] = None
-    speaker_decision_basis: Optional[str] = None
+    flags: list[str] = field(default_factory=list)
+    retention_score_value: float | None = None
+    speaker_score_detail: dict[str, float] | None = None
+    speaker_decision_basis: str | None = None
 
 
 @dataclass
@@ -73,11 +72,11 @@ class PairMatch:
 @dataclass
 class RunMeta:
     root: str
-    prime_folders: List[str]
-    primes: List[str]
+    prime_folders: list[str]
+    primes: list[str]
     device: str
     model: str
-    language: Optional[str]
+    language: str | None
     diarize: bool
     estimated_offset_b_minus_a_sec: float
     anchor_count: int
@@ -89,8 +88,8 @@ class RunMeta:
 
 @dataclass
 class RunResult:
-    segments: List[SegmentRecord]          # all segments (kept + suppressed), sorted by time
-    cleaned_segments: List[SegmentRecord]  # post-processed, LLM-ready
-    anchors: List[AlignmentAnchor]
-    pair_matches: List[PairMatch]
+    segments: list[SegmentRecord]          # all segments (kept + suppressed), sorted by time
+    cleaned_segments: list[SegmentRecord]  # post-processed, LLM-ready
+    anchors: list[AlignmentAnchor]
+    pair_matches: list[PairMatch]
     meta: RunMeta

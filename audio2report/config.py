@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import List, Optional
 
 import yaml
 from pydantic import BaseModel, Field
@@ -17,17 +16,17 @@ class AudioConfig(BaseModel):
 class TranscriptionConfig(BaseModel):
     backend: str = "whisperx"
     model: str = "large-v3"
-    language: Optional[str] = None
+    language: str | None = None
     compute_type: str = "float16"
     batch_size: int = 8
-    device: Optional[str] = None  # None → auto-detect (cuda if available, else cpu)
+    device: str | None = None  # None → auto-detect (cuda if available, else cpu)
 
 
 class DiarizationConfig(BaseModel):
     enabled: bool = False
-    hf_token: Optional[str] = None  # None → falls back to HF_TOKEN env var
+    hf_token: str | None = None  # None → falls back to HF_TOKEN env var
 
-    def resolved_token(self) -> Optional[str]:
+    def resolved_token(self) -> str | None:
         return self.hf_token or os.environ.get("HF_TOKEN")
 
 
@@ -44,7 +43,7 @@ class DeduplicationConfig(BaseModel):
 
 
 class OutputConfig(BaseModel):
-    formats: List[str] = Field(default_factory=lambda: ["json", "csv", "txt"])
+    formats: list[str] = Field(default_factory=lambda: ["json", "csv", "txt"])
     include_suppressed: bool = True
 
 
@@ -53,7 +52,7 @@ class LLMConfig(BaseModel):
     provider: str = "ollama"          # ollama | openai
     model: str = "llama3"
     base_url: str = "http://localhost:11434"
-    api_key: Optional[str] = None     # None → reads OPENAI_API_KEY env var
+    api_key: str | None = None     # None → reads OPENAI_API_KEY env var
     prompt_template: str = "audit_report"
     max_transcript_chars: int = 50_000  # truncate transcript if longer
     stream: bool = True               # stream response to terminal
@@ -72,7 +71,7 @@ class Config(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
 
 
-def load_config(path: Optional[Path] = None) -> Config:
+def load_config(path: Path | None = None) -> Config:
     """Load config from YAML file, or return defaults if no path given."""
     if path is None:
         return Config()

@@ -13,7 +13,6 @@ from audio2report.postprocessing.cleanup import (
 )
 from tests.helpers import make_segment
 
-
 # ---------------------------------------------------------------------------
 # Helper predicates
 # ---------------------------------------------------------------------------

@@ -6,7 +6,6 @@ No alignment or cross-channel deduplication is performed.  The pipeline is:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
 
 from rich.progress import (
     BarColumn,
@@ -61,7 +60,7 @@ class SingleMicPipeline:
     def __init__(self, config: Config) -> None:
         self.config = config
 
-    def run(self, input_path: Path, out_root: Path, prime_name: Optional[str] = None) -> RunResult:
+    def run(self, input_path: Path, out_root: Path, prime_name: str | None = None) -> RunResult:
         """
         Parameters
         ----------
@@ -114,7 +113,7 @@ class SingleMicPipeline:
 
         transcriber = WhisperXTranscriber(cfg.transcription, device)
         hf_token = cfg.diarization.resolved_token()
-        all_segments: List[SegmentRecord] = []
+        all_segments: list[SegmentRecord] = []
         json_dir = raw_json_root / safe_slug(resolved_prime)
         ensure_dir(json_dir)
 

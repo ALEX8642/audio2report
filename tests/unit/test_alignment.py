@@ -12,7 +12,6 @@ from audio2report.alignment.anchors import (
 from audio2report.alignment.timeline import apply_offset_to_channel
 from tests.helpers import make_segment
 
-
 # ---------------------------------------------------------------------------
 # Bigram helpers
 # ---------------------------------------------------------------------------

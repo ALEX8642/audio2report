@@ -19,9 +19,7 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import fields
 from pathlib import Path
-from typing import Iterator, Optional
 
 from audio2report._log import get_logger
 from audio2report.config import LLMConfig
@@ -96,7 +94,7 @@ def load_transcript_text(path: Path) -> str:
 # ---------------------------------------------------------------------------
 
 def _format_duration(meta: RunMeta) -> str:
-    total_sec = meta.total_segments * 0  # not directly available
+    meta.total_segments * 0  # not directly available
     # Use the last global timestamp from meta if we had it; fall back to a
     # best-effort description based on kept segment count.
     return f"~{meta.kept_segments} transcript segments"
@@ -106,7 +104,7 @@ def build_prompt(
     transcript_text: str,
     config: LLMConfig,
     *,
-    meta: Optional[RunMeta] = None,
+    meta: RunMeta | None = None,
 ) -> str:
     """
     Assemble the LLM prompt from the configured template.
@@ -152,7 +150,7 @@ def generate_report(
     transcript_text: str,
     config: LLMConfig,
     *,
-    meta: Optional[RunMeta] = None,
+    meta: RunMeta | None = None,
     stream_to_stdout: bool = True,
 ) -> str:
     """

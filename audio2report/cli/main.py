@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List, Optional
 
 import typer
 from dotenv import load_dotenv
@@ -139,20 +138,20 @@ def _run_report_step(
 def dual(
     root: Path = typer.Argument(..., help="Root folder containing exactly two 'prime' subfolders."),
     out: Path = typer.Option(Path("audio2report_output"), "--out", "-o", help="Output directory."),
-    config_file: Optional[Path] = typer.Option(None, "--config", "-c", help="YAML config file."),
-    model: Optional[str] = typer.Option(None, help="WhisperX model (e.g. large-v3, medium)."),
-    language: Optional[str] = typer.Option(None, help="Force language code (e.g. en). Default: auto-detect."),
-    compute_type: Optional[str] = typer.Option(None, help="Compute type: float16 | int8 | float32."),
-    batch_size: Optional[int] = typer.Option(None, help="WhisperX batch size."),
-    device: Optional[str] = typer.Option(None, help="Device: cuda | cpu."),
-    hf_token: Optional[str] = typer.Option(None, envvar="HF_TOKEN", help="Hugging Face token for diarization."),
+    config_file: Path | None = typer.Option(None, "--config", "-c", help="YAML config file."),
+    model: str | None = typer.Option(None, help="WhisperX model (e.g. large-v3, medium)."),
+    language: str | None = typer.Option(None, help="Force language code (e.g. en). Default: auto-detect."),
+    compute_type: str | None = typer.Option(None, help="Compute type: float16 | int8 | float32."),
+    batch_size: int | None = typer.Option(None, help="WhisperX batch size."),
+    device: str | None = typer.Option(None, help="Device: cuda | cpu."),
+    hf_token: str | None = typer.Option(None, envvar="HF_TOKEN", help="Hugging Face token for diarization."),
     diarize: bool = typer.Option(False, "--diarize/--no-diarize", help="Enable speaker diarization."),
     no_cache: bool = typer.Option(False, "--no-cache", help="Re-transcribe even if cached JSON exists."),
-    formats: Optional[List[str]] = typer.Option(None, "--format", help="Output formats: json, csv, txt (repeatable)."),
+    formats: list[str] | None = typer.Option(None, "--format", help="Output formats: json, csv, txt (repeatable)."),
     generate_report: bool = typer.Option(False, "--report", help="Generate an LLM audit report after transcription."),
-    llm_provider: Optional[str] = typer.Option(None, "--llm-provider", help="LLM provider: ollama | openai."),
-    llm_model: Optional[str] = typer.Option(None, "--llm-model", help="LLM model name."),
-    llm_base_url: Optional[str] = typer.Option(None, "--llm-base-url", help="LLM API base URL."),
+    llm_provider: str | None = typer.Option(None, "--llm-provider", help="LLM provider: ollama | openai."),
+    llm_model: str | None = typer.Option(None, "--llm-model", help="LLM model name."),
+    llm_base_url: str | None = typer.Option(None, "--llm-base-url", help="LLM API base URL."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be processed without running."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help=_VERBOSE_HELP),
     quiet: bool = typer.Option(False, "--quiet", "-q", help=_QUIET_HELP),
@@ -252,21 +251,21 @@ def dual(
 def single(
     input_path: Path = typer.Argument(..., metavar="INPUT", help="Audio file or folder."),
     out: Path = typer.Option(Path("audio2report_output"), "--out", "-o", help="Output directory."),
-    config_file: Optional[Path] = typer.Option(None, "--config", "-c", help="YAML config file."),
-    prime_name: Optional[str] = typer.Option(None, "--speaker", help="Speaker name for attribution."),
-    model: Optional[str] = typer.Option(None, help="WhisperX model name."),
-    language: Optional[str] = typer.Option(None, help="Force language code."),
-    compute_type: Optional[str] = typer.Option(None, help="Compute type: float16 | int8 | float32."),
-    batch_size: Optional[int] = typer.Option(None, help="WhisperX batch size."),
-    device: Optional[str] = typer.Option(None, help="Device: cuda | cpu."),
-    hf_token: Optional[str] = typer.Option(None, envvar="HF_TOKEN"),
+    config_file: Path | None = typer.Option(None, "--config", "-c", help="YAML config file."),
+    prime_name: str | None = typer.Option(None, "--speaker", help="Speaker name for attribution."),
+    model: str | None = typer.Option(None, help="WhisperX model name."),
+    language: str | None = typer.Option(None, help="Force language code."),
+    compute_type: str | None = typer.Option(None, help="Compute type: float16 | int8 | float32."),
+    batch_size: int | None = typer.Option(None, help="WhisperX batch size."),
+    device: str | None = typer.Option(None, help="Device: cuda | cpu."),
+    hf_token: str | None = typer.Option(None, envvar="HF_TOKEN"),
     diarize: bool = typer.Option(False, "--diarize/--no-diarize"),
     no_cache: bool = typer.Option(False, "--no-cache"),
-    formats: Optional[List[str]] = typer.Option(None, "--format"),
+    formats: list[str] | None = typer.Option(None, "--format"),
     generate_report: bool = typer.Option(False, "--report", help="Generate an LLM report after transcription."),
-    llm_provider: Optional[str] = typer.Option(None, "--llm-provider"),
-    llm_model: Optional[str] = typer.Option(None, "--llm-model"),
-    llm_base_url: Optional[str] = typer.Option(None, "--llm-base-url"),
+    llm_provider: str | None = typer.Option(None, "--llm-provider"),
+    llm_model: str | None = typer.Option(None, "--llm-model"),
+    llm_base_url: str | None = typer.Option(None, "--llm-base-url"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be processed without running."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help=_VERBOSE_HELP),
     quiet: bool = typer.Option(False, "--quiet", "-q", help=_QUIET_HELP),
@@ -295,10 +294,14 @@ def single(
     )
     if llm_provider or llm_model or llm_base_url or generate_report:
         llm_data = cfg.llm.model_dump()
-        if llm_provider:  llm_data["provider"]  = llm_provider
-        if llm_model:     llm_data["model"]      = llm_model
-        if llm_base_url:  llm_data["base_url"]   = llm_base_url
-        if generate_report: llm_data["enabled"]  = True
+        if llm_provider:
+            llm_data["provider"] = llm_provider
+        if llm_model:
+            llm_data["model"] = llm_model
+        if llm_base_url:
+            llm_data["base_url"] = llm_base_url
+        if generate_report:
+            llm_data["enabled"] = True
         from audio2report.config import LLMConfig
         cfg = cfg.model_copy(update={"llm": LLMConfig.model_validate(llm_data)})
 
@@ -365,16 +368,16 @@ def report(
             "  cleaned_llm_input.txt       (post-processed plain text)"
         ),
     ),
-    out: Optional[Path] = typer.Option(
+    out: Path | None = typer.Option(
         None, "--out", "-o",
         help="Output path for the report (default: report.md next to the transcript).",
     ),
-    config_file: Optional[Path] = typer.Option(None, "--config", "-c", help="YAML config file."),
-    provider: Optional[str] = typer.Option(None, "--provider", help="LLM provider: ollama | openai."),
-    llm_model: Optional[str] = typer.Option(None, "--model", help="LLM model name."),
-    base_url: Optional[str] = typer.Option(None, "--base-url", help="LLM API base URL."),
-    api_key: Optional[str] = typer.Option(None, "--api-key", envvar="OPENAI_API_KEY"),
-    template: Optional[str] = typer.Option(None, "--template", help="Template name or path to .txt file."),
+    config_file: Path | None = typer.Option(None, "--config", "-c", help="YAML config file."),
+    provider: str | None = typer.Option(None, "--provider", help="LLM provider: ollama | openai."),
+    llm_model: str | None = typer.Option(None, "--model", help="LLM model name."),
+    base_url: str | None = typer.Option(None, "--base-url", help="LLM API base URL."),
+    api_key: str | None = typer.Option(None, "--api-key", envvar="OPENAI_API_KEY"),
+    template: str | None = typer.Option(None, "--template", help="Template name or path to .txt file."),
     no_stream: bool = typer.Option(False, "--no-stream", help="Disable streaming output."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help=_VERBOSE_HELP),
     quiet: bool = typer.Option(False, "--quiet", "-q", help=_QUIET_HELP),
@@ -402,12 +405,18 @@ def report(
 
     # Apply report-specific overrides
     llm_data = cfg.llm.model_dump()
-    if provider:   llm_data["provider"] = provider
-    if llm_model:  llm_data["model"]    = llm_model
-    if base_url:   llm_data["base_url"] = base_url
-    if api_key:    llm_data["api_key"]  = api_key
-    if template:   llm_data["prompt_template"] = template
-    if no_stream:  llm_data["stream"]   = False
+    if provider:
+        llm_data["provider"] = provider
+    if llm_model:
+        llm_data["model"] = llm_model
+    if base_url:
+        llm_data["base_url"] = base_url
+    if api_key:
+        llm_data["api_key"] = api_key
+    if template:
+        llm_data["prompt_template"] = template
+    if no_stream:
+        llm_data["stream"] = False
     llm_data["enabled"] = True
 
     from audio2report.config import LLMConfig
@@ -480,20 +489,22 @@ def config_init(
     preset: str = typer.Option("default", "--preset", help="Preset: default | cpu_fast | gpu_full."),
 ) -> None:
     """Generate a starter YAML config file from a built-in preset."""
-    import shutil
-    configs_dir = Path(__file__).parent.parent.parent / "configs"
-    src = configs_dir / f"{preset}.yaml"
-    if not src.exists():
+    from importlib.resources import files
+    configs_pkg = files("audio2report").joinpath("configs")
+    src = configs_pkg.joinpath(f"{preset}.yaml")
+    try:
+        content = src.read_text(encoding="utf-8")
+    except FileNotFoundError:
         console.print(f"[red]Preset '{preset}' not found.[/red]  "
                       f"Available: default, cpu_fast, gpu_full")
         raise typer.Exit(code=1)
-    shutil.copy(src, output)
+    output.write_text(content, encoding="utf-8")
     console.print(f"[green]Config written to {output}[/green]")
 
 
 @config_app.command("show")
 def config_show(
-    config_file: Optional[Path] = typer.Argument(None, help="YAML config to display."),
+    config_file: Path | None = typer.Argument(None, help="YAML config to display."),
 ) -> None:
     """Print the effective config as JSON."""
     import json as _json

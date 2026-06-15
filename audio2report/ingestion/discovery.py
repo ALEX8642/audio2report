@@ -4,7 +4,6 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
 
 from audio2report._log import get_logger
 from audio2report.ingestion.normalize import ffmpeg_normalize_to_wav, ffprobe_duration_seconds
@@ -30,7 +29,7 @@ def parse_prime_from_folder(folder_name: str) -> str:
     return cleaned if cleaned else folder_name.strip()
 
 
-def find_prime_folders(root: Path) -> List[Path]:
+def find_prime_folders(root: Path) -> list[Path]:
     """Return all subdirectories whose names contain the word 'prime'."""
     folders = [
         p for p in root.iterdir()
@@ -39,7 +38,7 @@ def find_prime_folders(root: Path) -> List[Path]:
     return sorted(folders, key=lambda x: x.name.lower())
 
 
-def extract_timestamp(p: Path) -> Optional[float]:
+def extract_timestamp(p: Path) -> float | None:
     """
     Extract a wall-clock timestamp from filenames like:
         TX01_MIC001_20260331_181445_orig.wav
@@ -61,7 +60,7 @@ def file_sort_key(p: Path):
     return (1, nums_tuple, p.stat().st_mtime, p.name.lower())
 
 
-def list_audio_files(folder: Path) -> List[Path]:
+def list_audio_files(folder: Path) -> list[Path]:
     files = [p for p in folder.rglob("*") if p.is_file() and p.suffix.lower() in AUDIO_EXTS]
     files.sort(key=file_sort_key)
     logger.info(f"Sorted files for [bold]{folder.name}[/bold]:")
@@ -74,7 +73,7 @@ def build_file_records_for_folder(
     folder: Path,
     normalized_root: Path,
     inter_file_gap_sec: float,
-) -> List[AudioFileRecord]:
+) -> list[AudioFileRecord]:
     """
     Normalize all audio files in *folder* to mono 16 kHz WAV and build
     an ``AudioFileRecord`` list with folder-local timeline timestamps.
@@ -89,7 +88,7 @@ def build_file_records_for_folder(
 
     first_ts = extract_timestamp(files[0])
     running_t = 0.0
-    out: List[AudioFileRecord] = []
+    out: list[AudioFileRecord] = []
 
     for i, src in enumerate(files):
         dst = folder_out / f"{i:04d}_{safe_slug(src.stem)}.wav"

@@ -11,7 +11,7 @@ Requires: pip install 'audio2report[llm]'   (installs the openai package)
 from __future__ import annotations
 
 import os
-from typing import Iterator
+from collections.abc import Iterator
 
 from audio2report._log import get_logger
 from audio2report.config import LLMConfig

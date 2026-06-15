@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from typing import Iterator
+from collections.abc import Iterator
 
 from audio2report._log import get_logger
 from audio2report.config import LLMConfig

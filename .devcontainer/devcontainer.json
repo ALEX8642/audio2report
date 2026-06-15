@@ -6,7 +6,7 @@
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/app,type=bind,consistency=cached",
   "workspaceFolder": "/app",
-  "postCreateCommand": "pip install -e '.[whisperx,diarize,ui,dev]'",
+  "postCreateCommand": "pip install uv && uv sync --all-extras",
   "mounts": [
     "source=audio2report-hf-cache,target=/root/.cache/huggingface,type=volume"
   ],

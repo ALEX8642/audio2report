@@ -19,24 +19,22 @@ SequenceMatcher on the vast majority of non-matching pairs.
 from __future__ import annotations
 
 import statistics
-from typing import FrozenSet, List, Optional, Set, Tuple
 
 from audio2report.models import AlignmentAnchor, SegmentRecord
 from audio2report.utils import normalize_text, text_similarity
-
 
 # ---------------------------------------------------------------------------
 # Bigram pre-filter
 # ---------------------------------------------------------------------------
 
-def _word_bigrams(text: str) -> FrozenSet[Tuple[str, str]]:
+def _word_bigrams(text: str) -> frozenset[tuple[str, str]]:
     words = normalize_text(text).split()
     if len(words) < 2:
         return frozenset()
     return frozenset(zip(words, words[1:]))
 
 
-def _bigram_jaccard(bg_a: FrozenSet, bg_b: FrozenSet) -> float:
+def _bigram_jaccard(bg_a: frozenset, bg_b: frozenset) -> float:
     if not bg_a and not bg_b:
         return 0.0
     intersection = len(bg_a & bg_b)
@@ -51,17 +49,17 @@ _BIGRAM_PREFILTER_RATIO = 0.45
 
 
 def collect_alignment_anchors(
-    a_segments: List[SegmentRecord],
-    b_segments: List[SegmentRecord],
+    a_segments: list[SegmentRecord],
+    b_segments: list[SegmentRecord],
     *,
     min_text_len: int = 25,
     sim_threshold: float = 0.90,
-) -> List[AlignmentAnchor]:
+) -> list[AlignmentAnchor]:
     """
     Find high-similarity segment pairs across two channels and compute
     per-pair time deltas.  Delta = b_root_timeline_start − a_root_timeline_start.
     """
-    anchors: List[AlignmentAnchor] = []
+    anchors: list[AlignmentAnchor] = []
 
     a_candidates = [s for s in a_segments if len(normalize_text(s.text)) >= min_text_len]
     b_candidates = [s for s in b_segments if len(normalize_text(s.text)) >= min_text_len]
@@ -99,7 +97,7 @@ def collect_alignment_anchors(
     return anchors
 
 
-def robust_median_offset(anchors: List[AlignmentAnchor]) -> Optional[float]:
+def robust_median_offset(anchors: list[AlignmentAnchor]) -> float | None:
     """
     Return a MAD-filtered median of the per-anchor time deltas.
     Outliers more than max(2.0, 3.5 × MAD) away from the median are pruned.

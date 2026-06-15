@@ -1,8 +1,6 @@
 """Shared test helpers — not pytest fixtures, just plain factory functions."""
 from __future__ import annotations
 
-from typing import Optional
-
 from audio2report.models import SegmentRecord
 
 
@@ -15,12 +13,12 @@ def make_segment(
     t_end: float,
     *,
     file_index: int = 0,
-    diar_speaker_raw: Optional[str] = None,
-    diar_speaker_role: Optional[str] = None,
+    diar_speaker_raw: str | None = None,
+    diar_speaker_role: str | None = None,
     rms_dbfs: float = -18.0,
     avg_logprob: float = -0.2,
     no_speech_prob: float = 0.05,
-    speaker_final: Optional[str] = None,
+    speaker_final: str | None = None,
     keep: bool = True,
 ) -> SegmentRecord:
     """Factory for SegmentRecord with sensible defaults for testing."""

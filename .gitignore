@@ -9,6 +9,10 @@ build/
 .venv/
 venv/
 env/
+audio2report/bin/
+audio2report/lib/
+audio2report/lib64
+audio2report/pyvenv.cfg
 
 # pytest / coverage
 .pytest_cache/

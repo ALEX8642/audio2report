@@ -24,7 +24,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from rich.progress import (
     BarColumn,
@@ -113,10 +112,9 @@ class DualMicPipeline:
 
         for folder in prime_folders:
             from audio2report.ingestion.discovery import list_audio_files
-            from audio2report.utils import AUDIO_EXTS
 
             files = list_audio_files(folder)
-            normalized_root = out_root / "normalized_audio"
+            out_root / "normalized_audio"
             raw_json_root = out_root / "per_file_whisperx_json"
 
             for i, src in enumerate(files):
@@ -171,7 +169,7 @@ class DualMicPipeline:
         logger.info(f"Prime folders: {[p.name for p in prime_folders]}")
 
         # Build file records and normalise audio
-        folder_records: Dict[str, List[AudioFileRecord]] = {}
+        folder_records: dict[str, list[AudioFileRecord]] = {}
         for folder in prime_folders:
             recs = build_file_records_for_folder(
                 folder, normalized_root, cfg.audio.inter_file_gap_sec
@@ -188,7 +186,7 @@ class DualMicPipeline:
         transcriber = WhisperXTranscriber(cfg.transcription, device)
         hf_token = cfg.diarization.resolved_token()
 
-        all_segments: List[SegmentRecord] = []
+        all_segments: list[SegmentRecord] = []
         total_files = sum(len(recs) for recs in folder_records.values())
 
         with _make_progress() as progress:
@@ -247,7 +245,7 @@ class DualMicPipeline:
         assign_diar_roles_per_channel(all_segments)
 
         # Split segments by channel
-        channels: Dict[str, List[SegmentRecord]] = defaultdict(list)
+        channels: dict[str, list[SegmentRecord]] = defaultdict(list)
         for seg in all_segments:
             channels[seg.channel_folder].append(seg)
 
@@ -299,7 +297,7 @@ class DualMicPipeline:
             pair_matches = []
 
         seg_by_uid = {s.uid: s for s in all_segments}
-        peer_map: Dict[str, str] = {}
+        peer_map: dict[str, str] = {}
 
         for pm in pair_matches:
             sa = seg_by_uid[pm.a_uid]

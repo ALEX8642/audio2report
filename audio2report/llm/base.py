@@ -5,7 +5,8 @@ doesn't care which backend is running.
 """
 from __future__ import annotations
 
-from typing import Iterator, Protocol, runtime_checkable
+from collections.abc import Iterator
+from typing import Protocol, runtime_checkable
 
 from audio2report.config import LLMConfig
 

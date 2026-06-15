@@ -1,8 +1,7 @@
 """Timeline construction and offset application."""
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from audio2report.ingestion.normalize import rms_dbfs_for_region
 from audio2report.models import AudioFileRecord, SegmentRecord
@@ -10,11 +9,11 @@ from audio2report.utils import safe_slug
 
 
 def result_to_segments(
-    result: Dict[str, Any],
+    result: dict[str, Any],
     file_record: AudioFileRecord,
-) -> List[SegmentRecord]:
+) -> list[SegmentRecord]:
     """Convert a WhisperX result dict into ``SegmentRecord`` objects."""
-    segments: List[SegmentRecord] = []
+    segments: list[SegmentRecord] = []
 
     for idx, seg in enumerate(result.get("segments", [])):
         s = float(seg.get("start", 0.0))
@@ -56,7 +55,7 @@ def result_to_segments(
     return segments
 
 
-def apply_offset_to_channel(segments: List[SegmentRecord], offset_sec: float) -> None:
+def apply_offset_to_channel(segments: list[SegmentRecord], offset_sec: float) -> None:
     """Shift all global timestamps in *segments* by *offset_sec*."""
     for seg in segments:
         seg.global_start_sec = seg.root_timeline_start_sec + offset_sec

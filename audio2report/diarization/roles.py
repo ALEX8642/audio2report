@@ -9,12 +9,11 @@ OTHER_ON_THIS_MIC.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from typing import Dict, List, Tuple
 
 from audio2report.models import SegmentRecord
 
 
-def assign_diar_roles_per_channel(segments: List[SegmentRecord]) -> None:
+def assign_diar_roles_per_channel(segments: list[SegmentRecord]) -> None:
     """
     Mutate each segment's ``diar_speaker_role`` field in-place.
 
@@ -23,7 +22,7 @@ def assign_diar_roles_per_channel(segments: List[SegmentRecord]) -> None:
         - ``"OTHER_ON_THIS_MIC"``  — any other diarized speaker
         - ``None``                 — no diarization label present
     """
-    by_channel_file: Dict[Tuple[str, int], List[SegmentRecord]] = defaultdict(list)
+    by_channel_file: dict[tuple[str, int], list[SegmentRecord]] = defaultdict(list)
     for seg in segments:
         by_channel_file[(seg.channel_folder, seg.file_index)].append(seg)
 

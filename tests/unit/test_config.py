@@ -1,8 +1,6 @@
 """Unit tests for config loading, validation, and derived helpers."""
 from __future__ import annotations
 
-import os
-
 import pytest
 import yaml
 
@@ -13,7 +11,6 @@ from audio2report.config import (
     load_config,
 )
 from audio2report.utils import auto_compute_type
-
 
 # ---------------------------------------------------------------------------
 # Default config

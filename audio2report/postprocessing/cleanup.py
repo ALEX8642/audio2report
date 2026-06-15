@@ -17,11 +17,9 @@ Pass 2 — adjacent same-speaker fragment merging
 from __future__ import annotations
 
 import re
-from typing import List
 
 from audio2report.models import SegmentRecord
 from audio2report.utils import normalize_text, text_similarity
-
 
 # ---------------------------------------------------------------------------
 # Short-utterance helpers  (defined before the functions that use them)
@@ -52,7 +50,7 @@ def text_contains(a: str, b: str) -> bool:
 def dedupe_internal_repetition(text: str) -> str:
     """Remove near-duplicate sentences within a single merged segment."""
     parts = re.split(r'(?<=[.!?])\s+', text.strip())
-    unique: List[str] = []
+    unique: list[str] = []
     for p in parts:
         p_clean = p.strip()
         if not p_clean:
@@ -66,7 +64,7 @@ def dedupe_internal_repetition(text: str) -> str:
 # Main post-processing entry point
 # ---------------------------------------------------------------------------
 
-def postprocess_segments_for_llm(segments: List[SegmentRecord]) -> List[SegmentRecord]:
+def postprocess_segments_for_llm(segments: list[SegmentRecord]) -> list[SegmentRecord]:
     """
     Return a cleaned, merged list of kept segments suitable for LLM ingestion.
 
@@ -79,7 +77,7 @@ def postprocess_segments_for_llm(segments: List[SegmentRecord]) -> List[SegmentR
     # ------------------------------------------------------------------
     # Pass 1: per-segment duplicate suppression
     # ------------------------------------------------------------------
-    cleaned: List[SegmentRecord] = []
+    cleaned: list[SegmentRecord] = []
 
     for seg in segs:
         if not cleaned:
@@ -137,7 +135,7 @@ def postprocess_segments_for_llm(segments: List[SegmentRecord]) -> List[SegmentR
     # ------------------------------------------------------------------
     # Pass 2: adjacent same-speaker fragment merging
     # ------------------------------------------------------------------
-    merged: List[SegmentRecord] = []
+    merged: list[SegmentRecord] = []
 
     for seg in cleaned:
         if not merged:
