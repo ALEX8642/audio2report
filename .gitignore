@@ -36,3 +36,6 @@ Thumbs.db
 # Secrets
 .env
 *.pem
+
+# Claude Code
+CLAUDE.md
