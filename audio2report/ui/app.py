@@ -6,8 +6,10 @@ Launch with:
 """
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -63,6 +65,7 @@ if __name__ == "__main__":
             "transcript_segments": None,
             "report_text": None,
             "run_meta": None,
+            "_tmp_input_dir": None,
         }
         for key, val in defaults.items():
             if key not in st.session_state:
@@ -207,19 +210,44 @@ if __name__ == "__main__":
     with tab_run:
         st.header("Run Pipeline")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            prompt = (
-                "Root folder (containing two channel sub-folders)"
-                if mode == "dual"
-                else "Recording folder"
+        # ── File upload ───────────────────────────────────────────────────────
+        if mode == "dual":
+            st.caption(
+                "Upload WAV files from each microphone. "
+                "Channel A = interviewer mic, Channel B = subject mic."
             )
-            root_path = st.text_input(prompt, placeholder="/path/to/meeting_2024_01_15/")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                uploaded_a = st.file_uploader(
+                    "🎤 Channel A — Interviewer",
+                    type=["wav"],
+                    accept_multiple_files=True,
+                    key="uploader_a",
+                )
+            with col_b:
+                uploaded_b = st.file_uploader(
+                    "🎤 Channel B — Subject",
+                    type=["wav"],
+                    accept_multiple_files=True,
+                    key="uploader_b",
+                )
+            files_ready = bool(uploaded_a and uploaded_b)
+            uploaded_single = []
+        else:
+            uploaded_single = st.file_uploader(
+                "🎙 Audio file(s) — WAV",
+                type=["wav"],
+                accept_multiple_files=True,
+                key="uploader_single",
+            )
+            uploaded_a = uploaded_b = []
+            files_ready = bool(uploaded_single)
 
-        with col2:
-            output_dir_input = st.text_input(
-                "Output directory", placeholder="(blank = ROOT/audio2report_out)"
-            )
+        output_dir_input = st.text_input(
+            "Output directory",
+            value=str(Path.home() / "audio2report_out"),
+            help="Transcript, CSV, and report files are written here.",
+        )
 
         dry_col, run_col, _ = st.columns([1, 1, 4])
         dry_run_clicked = dry_col.button("🔍 Dry Run", use_container_width=True)
@@ -228,23 +256,43 @@ if __name__ == "__main__":
         log_area = st.empty()
 
         if dry_run_clicked or run_clicked:
-            if not root_path:
-                st.error("Please enter a folder path.")
-            elif not Path(root_path).exists():
-                st.error(f"Path does not exist: {root_path}")
+            if not files_ready:
+                if mode == "dual":
+                    st.error("Upload at least one WAV file for each channel.")
+                else:
+                    st.error("Upload at least one WAV file.")
             else:
-                import tempfile
+                # Clean up previous temp input dir from a prior run
+                prev_tmp = st.session_state.get("_tmp_input_dir")
+                if prev_tmp and Path(prev_tmp).exists():
+                    shutil.rmtree(prev_tmp, ignore_errors=True)
 
-                out_dir = output_dir_input.strip() or str(
-                    Path(root_path) / "audio2report_out"
-                )
+                tmp_input = tempfile.mkdtemp(prefix="a2r_in_")
+                st.session_state["_tmp_input_dir"] = tmp_input
+
+                if mode == "dual":
+                    dir_a = Path(tmp_input) / "channel_a"
+                    dir_b = Path(tmp_input) / "channel_b"
+                    dir_a.mkdir()
+                    dir_b.mkdir()
+                    for f in uploaded_a:
+                        (dir_a / f.name).write_bytes(f.getvalue())
+                    for f in uploaded_b:
+                        (dir_b / f.name).write_bytes(f.getvalue())
+                    input_path = tmp_input
+                else:
+                    for f in uploaded_single:
+                        (Path(tmp_input) / f.name).write_bytes(f.getvalue())
+                    input_path = tmp_input
+
+                out_dir = output_dir_input.strip() or str(Path.home() / "audio2report_out")
                 Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-                with tempfile.TemporaryDirectory() as tmp_dir:
-                    cfg_path = _build_inline_config(Path(tmp_dir))
+                with tempfile.TemporaryDirectory() as cfg_tmp:
+                    cfg_path = _build_inline_config(Path(cfg_tmp))
                     cmd = [
                         sys.executable, "-m", "audio2report.cli.main",
-                        mode, str(root_path),
+                        mode, input_path,
                         "--output-dir", out_dir,
                         "--config", str(cfg_path),
                     ]
