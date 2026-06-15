@@ -1,8 +1,9 @@
 # audio2report
 
-[![CI](https://github.com/alex8642/audio2report/actions/workflows/ci.yml/badge.svg)](https://github.com/alex8642/audio2report/actions/workflows/ci.yml)
+[![CI](https://github.com/ALEX8642/audio2report/actions/workflows/ci.yml/badge.svg)](https://github.com/ALEX8642/audio2report/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 > Convert dual-microphone meeting recordings into clean, deduplicated transcripts and LLM-generated audit reports — fully local, no cloud required.
 
