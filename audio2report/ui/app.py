@@ -189,7 +189,11 @@ if __name__ == "__main__":
             visible = "\n".join(st.session_state["log_lines"][-200:])
             log_text.code(visible, language=None)
 
-        proc.wait()
+        try:
+            proc.wait(timeout=3600)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            st.error("Pipeline timed out after 60 minutes.")
         return proc.returncode
 
     # ── Main tabs ─────────────────────────────────────────────────────────────
@@ -451,7 +455,7 @@ if __name__ == "__main__":
                     cmd.append("--no-stream")
 
                 with st.spinner("Generating report…"):
-                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
                 if result.returncode == 0:
                     report_file = Path(_report_out) / "report.md"
