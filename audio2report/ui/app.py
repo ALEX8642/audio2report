@@ -293,7 +293,7 @@ if __name__ == "__main__":
                     cmd = [
                         sys.executable, "-m", "audio2report.cli.main",
                         mode, input_path,
-                        "--output-dir", out_dir,
+                        "--out", out_dir,
                         "--config", str(cfg_path),
                     ]
                     if dry_run_clicked:
@@ -305,8 +305,6 @@ if __name__ == "__main__":
                             "--llm-model", llm_model,
                             "--llm-base-url", llm_base_url,
                         ]
-                        if llm_api_key:
-                            cmd += ["--llm-api-key", llm_api_key]
 
                     with st.spinner("Running…"):
                         rc = _stream_subprocess(cmd, log_area)
@@ -489,13 +487,14 @@ if __name__ == "__main__":
                 st.error("Transcript file not found.")
             else:
                 _report_out = str(Path(transcript_path).parent)
+                report_file = str(Path(_report_out) / "report.md")
                 cmd = [
                     sys.executable, "-m", "audio2report.cli.main",
                     "report", transcript_path,
                     "--provider", llm_provider,
                     "--model", llm_model,
                     "--base-url", llm_base_url,
-                    "--output-dir", _report_out,
+                    "--out", report_file,
                 ]
                 if llm_api_key:
                     cmd += ["--api-key", llm_api_key]
