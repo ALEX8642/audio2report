@@ -6,11 +6,40 @@ Launch with:
 """
 from __future__ import annotations
 
+import atexit
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Temp-directory lifecycle
+# ---------------------------------------------------------------------------
+
+_TRACKED_TEMP_DIRS: set[str] = set()
+
+
+def _cleanup_tracked_dirs() -> None:
+    for d in list(_TRACKED_TEMP_DIRS):
+        shutil.rmtree(d, ignore_errors=True)
+    _TRACKED_TEMP_DIRS.clear()
+
+
+atexit.register(_cleanup_tracked_dirs)
+
+
+def _make_temp_dir(prefix: str) -> str:
+    d = tempfile.mkdtemp(prefix=prefix)
+    _TRACKED_TEMP_DIRS.add(d)
+    return d
+
+
+def _rm_temp_dir(path: str | None) -> None:
+    if path:
+        _TRACKED_TEMP_DIRS.discard(path)
+        shutil.rmtree(path, ignore_errors=True)
+
 
 # ---------------------------------------------------------------------------
 # Entry point (called by the audio2report-ui console script)
@@ -42,7 +71,7 @@ if __name__ == "__main__":
     except ImportError:
         print(
             "Streamlit is not installed.\n"
-            "Install it with:  pip install 'audio2report[ui]'"
+            "Install it with:  pip install audio2report"
         )
         sys.exit(1)
 
@@ -61,11 +90,12 @@ if __name__ == "__main__":
         defaults = {
             "log_lines": [],
             "pipeline_done": False,
-            "output_dir": None,
             "transcript_segments": None,
             "report_text": None,
             "run_meta": None,
+            "output_files": {},       # {filename: bytes} — populated after each run
             "_tmp_input_dir": None,
+            "_tmp_output_dir": None,
         }
         for key, val in defaults.items():
             if key not in st.session_state:
@@ -157,6 +187,7 @@ if __name__ == "__main__":
         return config_path
 
     def _load_outputs(output_dir: str) -> None:
+        """Read pipeline output into session state. Bytes cached for download buttons."""
         out = Path(output_dir)
 
         transcript_json = out / "canonical_transcript.json"
@@ -173,6 +204,23 @@ if __name__ == "__main__":
         report_md = out / "report.md"
         if report_md.exists():
             st.session_state["report_text"] = report_md.read_text(encoding="utf-8")
+
+        # Cache all downloadable files as bytes so downloads survive temp-dir cleanup
+        download_names = [
+            "canonical_transcript.json",
+            "canonical_transcript.csv",
+            "canonical_transcript.txt",
+            "cleaned_llm_input.txt",
+            "alignment_anchors.json",
+            "run_meta.json",
+            "report.md",
+        ]
+        files: dict[str, bytes] = {}
+        for name in download_names:
+            p = out / name
+            if p.exists():
+                files[name] = p.read_bytes()
+        st.session_state["output_files"] = files
 
     def _stream_subprocess(cmd: list[str], log_area) -> int:
         """Run *cmd*, streaming stdout/stderr into a Streamlit code block."""
@@ -243,12 +291,6 @@ if __name__ == "__main__":
             uploaded_a = uploaded_b = []
             files_ready = bool(uploaded_single)
 
-        output_dir_input = st.text_input(
-            "Output directory",
-            value=str(Path.home() / "audio2report_out"),
-            help="Transcript, CSV, and report files are written here.",
-        )
-
         dry_col, run_col, _ = st.columns([1, 1, 4])
         dry_run_clicked = dry_col.button("🔍 Dry Run", use_container_width=True)
         run_clicked = run_col.button("▶ Run", type="primary", use_container_width=True)
@@ -262,13 +304,15 @@ if __name__ == "__main__":
                 else:
                     st.error("Upload at least one WAV file.")
             else:
-                # Clean up previous temp input dir from a prior run
-                prev_tmp = st.session_state.get("_tmp_input_dir")
-                if prev_tmp and Path(prev_tmp).exists():
-                    shutil.rmtree(prev_tmp, ignore_errors=True)
+                # Clean up temp dirs from previous run
+                _rm_temp_dir(st.session_state.get("_tmp_input_dir"))
+                _rm_temp_dir(st.session_state.get("_tmp_output_dir"))
+                st.session_state["output_files"] = {}
 
-                tmp_input = tempfile.mkdtemp(prefix="a2r_in_")
+                tmp_input = _make_temp_dir("a2r_in_")
+                tmp_output = _make_temp_dir("a2r_out_")
                 st.session_state["_tmp_input_dir"] = tmp_input
+                st.session_state["_tmp_output_dir"] = tmp_output
 
                 if mode == "dual":
                     dir_a = Path(tmp_input) / "channel_a"
@@ -285,15 +329,12 @@ if __name__ == "__main__":
                         (Path(tmp_input) / f.name).write_bytes(f.getvalue())
                     input_path = tmp_input
 
-                out_dir = output_dir_input.strip() or str(Path.home() / "audio2report_out")
-                Path(out_dir).mkdir(parents=True, exist_ok=True)
-
                 with tempfile.TemporaryDirectory() as cfg_tmp:
                     cfg_path = _build_inline_config(Path(cfg_tmp))
                     cmd = [
                         sys.executable, "-m", "audio2report.cli.main",
                         mode, input_path,
-                        "--out", out_dir,
+                        "--out", tmp_output,
                         "--config", str(cfg_path),
                     ]
                     if dry_run_clicked:
@@ -313,8 +354,7 @@ if __name__ == "__main__":
                     if rc == 0:
                         st.success("Pipeline completed successfully.")
                         st.session_state["pipeline_done"] = True
-                        st.session_state["output_dir"] = out_dir
-                        _load_outputs(out_dir)
+                        _load_outputs(tmp_output)
                     else:
                         st.error(f"Pipeline exited with code {rc}. Check the log above.")
 
@@ -323,7 +363,46 @@ if __name__ == "__main__":
                 "\n".join(st.session_state["log_lines"][-200:]), language=None
             )
 
-        # Run metadata panel
+        # ── Downloads ─────────────────────────────────────────────────────────
+        output_files = st.session_state.get("output_files") or {}
+        if output_files:
+            st.divider()
+            st.subheader("Downloads")
+            _MIME = {
+                "json": "application/json",
+                "csv": "text/csv",
+                "txt": "text/plain",
+                "md": "text/markdown",
+            }
+            cols = st.columns(4)
+            col_idx = 0
+            for fname, data in output_files.items():
+                ext = fname.rsplit(".", 1)[-1]
+                cols[col_idx % 4].download_button(
+                    f"⬇ {fname}",
+                    data=data,
+                    file_name=fname,
+                    mime=_MIME.get(ext, "application/octet-stream"),
+                    use_container_width=True,
+                )
+                col_idx += 1
+
+            with st.expander("What are these files?"):
+                st.markdown(
+                    """
+| File | What it is |
+|---|---|
+| `canonical_transcript.json` | Full segment list with speaker labels, timestamps, confidence scores, and suppression flags. Primary output — use this for any downstream processing. |
+| `canonical_transcript.csv` | Same data in spreadsheet format. Open in Excel or Google Sheets to sort, filter, or annotate. |
+| `canonical_transcript.txt` | Plain-text human-readable transcript. Useful for quick review or copy-pasting. |
+| `cleaned_llm_input.txt` | Deduplicated transcript with suppressed segments removed. This is what the pipeline feeds to the LLM — paste it into any chat AI for summarisation. |
+| `alignment_anchors.json` | Diagnostic file showing the shared utterances used to estimate the clock offset between the two microphones. Useful for debugging alignment issues. |
+| `run_meta.json` | Pipeline run statistics: segment counts, suppression rate, estimated mic offset, device, model, and timing. |
+| `report.md` | LLM-generated audit report in Markdown. Only present if you enabled report generation. |
+"""
+                )
+
+        # ── Run metadata panel ─────────────────────────────────────────────────
         if st.session_state["run_meta"]:
             st.divider()
             st.subheader("Run statistics")
@@ -356,7 +435,6 @@ if __name__ == "__main__":
             ctrl1, ctrl2, _ = st.columns([2, 2, 2])
             show_suppressed = ctrl1.checkbox("Show suppressed segments", value=False)
             search_text = ctrl2.text_input("Search", placeholder="Filter by text…")
-            out_dir_path = st.session_state.get("output_dir") or ""
 
             # Speaker colour map
             speakers = sorted(
@@ -421,26 +499,24 @@ if __name__ == "__main__":
                 )
 
             st.divider()
+            output_files = st.session_state.get("output_files") or {}
             dl1, dl2 = st.columns(2)
 
-            if out_dir_path:
-                txt_path = Path(out_dir_path) / "cleaned_llm_input.txt"
-                if txt_path.exists():
-                    dl1.download_button(
-                        "⬇ cleaned_llm_input.txt",
-                        data=txt_path.read_bytes(),
-                        file_name="cleaned_llm_input.txt",
-                        mime="text/plain",
-                    )
+            if "cleaned_llm_input.txt" in output_files:
+                dl1.download_button(
+                    "⬇ cleaned_llm_input.txt",
+                    data=output_files["cleaned_llm_input.txt"],
+                    file_name="cleaned_llm_input.txt",
+                    mime="text/plain",
+                )
 
-                csv_path = Path(out_dir_path) / "canonical_transcript.csv"
-                if csv_path.exists():
-                    dl2.download_button(
-                        "⬇ canonical_transcript.csv",
-                        data=csv_path.read_bytes(),
-                        file_name="canonical_transcript.csv",
-                        mime="text/csv",
-                    )
+            if "canonical_transcript.csv" in output_files:
+                dl2.download_button(
+                    "⬇ canonical_transcript.csv",
+                    data=output_files["canonical_transcript.csv"],
+                    file_name="canonical_transcript.csv",
+                    mime="text/csv",
+                )
 
     # ── Tab 3: Report ─────────────────────────────────────────────────────────
 
@@ -448,7 +524,7 @@ if __name__ == "__main__":
         st.header("LLM Report")
 
         report_text = st.session_state.get("report_text")
-        out_dir_path = st.session_state.get("output_dir") or ""
+        output_files = st.session_state.get("output_files") or {}
 
         if report_text:
             st.success("Report loaded from pipeline output.")
@@ -456,7 +532,7 @@ if __name__ == "__main__":
             st.divider()
             st.download_button(
                 "⬇ Download report.md",
-                data=report_text.encode("utf-8"),
+                data=output_files.get("report.md", report_text.encode("utf-8")),
                 file_name="report.md",
                 mime="text/markdown",
             )
@@ -470,9 +546,9 @@ if __name__ == "__main__":
         st.divider()
         st.subheader("Generate report from transcript")
 
+        tmp_out = st.session_state.get("_tmp_output_dir") or ""
         default_transcript = (
-            str(Path(out_dir_path) / "canonical_transcript.json")
-            if out_dir_path else ""
+            str(Path(tmp_out) / "canonical_transcript.json") if tmp_out else ""
         )
         transcript_path = st.text_input(
             "Transcript file",
@@ -486,8 +562,8 @@ if __name__ == "__main__":
             if not transcript_path or not Path(transcript_path).exists():
                 st.error("Transcript file not found.")
             else:
-                _report_out = str(Path(transcript_path).parent)
-                report_file = str(Path(_report_out) / "report.md")
+                report_out_dir = str(Path(transcript_path).parent)
+                report_file = str(Path(report_out_dir) / "report.md")
                 cmd = [
                     sys.executable, "-m", "audio2report.cli.main",
                     "report", transcript_path,
@@ -505,11 +581,13 @@ if __name__ == "__main__":
                     result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
                 if result.returncode == 0:
-                    report_file = Path(_report_out) / "report.md"
-                    if report_file.exists():
-                        st.session_state["report_text"] = report_file.read_text(
-                            encoding="utf-8"
-                        )
+                    report_path = Path(report_out_dir) / "report.md"
+                    if report_path.exists():
+                        report_bytes = report_path.read_bytes()
+                        st.session_state["report_text"] = report_bytes.decode("utf-8")
+                        files = dict(st.session_state.get("output_files") or {})
+                        files["report.md"] = report_bytes
+                        st.session_state["output_files"] = files
                         st.rerun()
                     else:
                         st.warning("Command succeeded but report.md was not found.")
