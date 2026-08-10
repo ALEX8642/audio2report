@@ -25,6 +25,9 @@ audio2report_out/
 *.normalized.wav
 *.normalized_*.wav
 
+# Local test audio (real recordings — never commit)
+/test files - temp/
+
 # Jupyter
 .ipynb_checkpoints/
 

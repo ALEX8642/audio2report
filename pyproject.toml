@@ -12,7 +12,7 @@ authors = [{ name = "alex8642", url = "https://github.com/alex8642" }]
 dependencies = [
     "numpy>=1.24",
     "pydantic>=2.0",
-    "typer[all]>=0.12",
+    "typer>=0.12",
     "pyyaml>=6.0",
     "soundfile>=0.12",
     "python-dotenv>=1.0",
@@ -23,6 +23,11 @@ whisperx = ["whisperx"]
 diarize   = ["pyannote.audio>=3.0"]
 llm       = ["openai>=1.0", "httpx>=0.25"]
 ui        = ["streamlit>=1.30", "whisperx"]
+# Intel GPU (Arc iGPU)/NPU transcription backend via OpenVINO. Kept out of
+# `full` deliberately: it pulls in Intel-specific GPU/NPU userspace runtime
+# expectations that are irrelevant (and wasteful to install) on non-Intel
+# machines — install explicitly with `pip install "audio2report[intel]"`.
+intel     = ["openvino>=2026.1", "openvino-genai>=2026.1", "openvino-tokenizers>=2026.1", "huggingface_hub>=0.24"]
 full      = ["audio2report[whisperx,diarize,llm,ui]"]
 dev       = ["pytest>=7.0", "pytest-cov", "ruff", "mypy"]
 

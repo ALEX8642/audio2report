@@ -29,7 +29,7 @@ from audio2report.ingestion.normalize import (
 )
 from audio2report.models import AudioFileRecord, RunMeta, RunResult, SegmentRecord
 from audio2report.postprocessing.cleanup import postprocess_segments_for_llm
-from audio2report.transcription.whisperx_backend import WhisperXTranscriber
+from audio2report.transcription.base import get_transcriber
 from audio2report.utils import dump_json, ensure_dir, load_json, pick_device, safe_slug
 
 logger = get_logger(__name__)
@@ -80,7 +80,7 @@ class SingleMicPipeline:
         ensure_dir(normalized_root)
         ensure_dir(raw_json_root)
 
-        device = pick_device(cfg.transcription.device)
+        device = pick_device(cfg.transcription.device, cfg.transcription.backend)
         logger.info(f"Device: [bold]{device}[/bold]")
 
         # Build file records
@@ -111,7 +111,7 @@ class SingleMicPipeline:
         if not file_recs:
             raise RuntimeError(f"No audio files found in {input_path}")
 
-        transcriber = WhisperXTranscriber(cfg.transcription, device)
+        transcriber = get_transcriber(cfg.transcription, device)
         hf_token = cfg.diarization.resolved_token()
         all_segments: list[SegmentRecord] = []
         json_dir = raw_json_root / safe_slug(resolved_prime)
@@ -183,6 +183,7 @@ class SingleMicPipeline:
             prime_folders=[resolved_prime],
             primes=[resolved_prime],
             device=device,
+            backend=cfg.transcription.backend,
             model=cfg.transcription.model,
             language=cfg.transcription.language,
             diarize=cfg.diarization.enabled,

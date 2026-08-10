@@ -48,6 +48,7 @@ def _apply_overrides(cfg: Config, **kwargs) -> Config:
     data = cfg.model_dump()
 
     mapping = {
+        "backend":      ("transcription", "backend"),
         "model":        ("transcription", "model"),
         "language":     ("transcription", "language"),
         "compute_type": ("transcription", "compute_type"),
@@ -139,11 +140,12 @@ def dual(
     root: Path = typer.Argument(..., help="Root folder containing exactly two 'prime' subfolders."),
     out: Path = typer.Option(Path("audio2report_output"), "--out", "-o", help="Output directory."),
     config_file: Path | None = typer.Option(None, "--config", "-c", help="YAML config file."),
-    model: str | None = typer.Option(None, help="WhisperX model (e.g. large-v3, medium)."),
+    backend: str | None = typer.Option(None, "--backend", help="Transcription backend: whisperx | openvino."),
+    model: str | None = typer.Option(None, help="Model name (WhisperX short name, or an HF OpenVINO IR repo id for --backend openvino)."),
     language: str | None = typer.Option(None, help="Force language code (e.g. en). Default: auto-detect."),
-    compute_type: str | None = typer.Option(None, help="Compute type: float16 | int8 | float32."),
-    batch_size: int | None = typer.Option(None, help="WhisperX batch size."),
-    device: str | None = typer.Option(None, help="Device: cuda | cpu."),
+    compute_type: str | None = typer.Option(None, help="Compute type: float16 | int8 | float32. (whisperx backend only)"),
+    batch_size: int | None = typer.Option(None, help="WhisperX batch size. (whisperx backend only)"),
+    device: str | None = typer.Option(None, help="Device: auto | cpu | cuda | gpu | npu."),
     hf_token: str | None = typer.Option(None, envvar="HF_TOKEN", help="Hugging Face token for diarization."),
     diarize: bool = typer.Option(False, "--diarize/--no-diarize", help="Enable speaker diarization."),
     no_cache: bool = typer.Option(False, "--no-cache", help="Re-transcribe even if cached JSON exists."),
@@ -166,6 +168,8 @@ def dual(
 
         audio2report dual ./recordings --config configs/gpu_full.yaml
 
+        audio2report dual ./recordings --config configs/intel_gpu.yaml
+
         audio2report dual ./recordings --report --llm-provider ollama --llm-model llama3
 
         audio2report dual ./recordings --dry-run
@@ -177,7 +181,7 @@ def dual(
     cfg = load_config(config_file)
     cfg = _apply_overrides(
         cfg,
-        model=model, language=language, compute_type=compute_type,
+        backend=backend, model=model, language=language, compute_type=compute_type,
         batch_size=batch_size, device=device, hf_token=hf_token,
         diarize=diarize, no_cache=no_cache, formats=formats,
     )
@@ -202,6 +206,7 @@ def dual(
                 f"root : {root.resolve()}\n"
                 f"out  : {out.resolve()}\n"
                 f"model: {cfg.transcription.model}  "
+                f"backend: {cfg.transcription.backend}  "
                 f"device: {cfg.transcription.device or 'auto'}  "
                 f"diarize: {cfg.diarization.enabled}  "
                 f"cache: {cfg.cache}",
@@ -253,11 +258,12 @@ def single(
     out: Path = typer.Option(Path("audio2report_output"), "--out", "-o", help="Output directory."),
     config_file: Path | None = typer.Option(None, "--config", "-c", help="YAML config file."),
     prime_name: str | None = typer.Option(None, "--speaker", help="Speaker name for attribution."),
-    model: str | None = typer.Option(None, help="WhisperX model name."),
+    backend: str | None = typer.Option(None, "--backend", help="Transcription backend: whisperx | openvino."),
+    model: str | None = typer.Option(None, help="Model name (WhisperX short name, or an HF OpenVINO IR repo id for --backend openvino)."),
     language: str | None = typer.Option(None, help="Force language code."),
-    compute_type: str | None = typer.Option(None, help="Compute type: float16 | int8 | float32."),
-    batch_size: int | None = typer.Option(None, help="WhisperX batch size."),
-    device: str | None = typer.Option(None, help="Device: cuda | cpu."),
+    compute_type: str | None = typer.Option(None, help="Compute type: float16 | int8 | float32. (whisperx backend only)"),
+    batch_size: int | None = typer.Option(None, help="WhisperX batch size. (whisperx backend only)"),
+    device: str | None = typer.Option(None, help="Device: auto | cpu | cuda | gpu | npu."),
     hf_token: str | None = typer.Option(None, envvar="HF_TOKEN"),
     diarize: bool = typer.Option(False, "--diarize/--no-diarize"),
     no_cache: bool = typer.Option(False, "--no-cache"),
@@ -288,7 +294,7 @@ def single(
     cfg = load_config(config_file)
     cfg = _apply_overrides(
         cfg,
-        model=model, language=language, compute_type=compute_type,
+        backend=backend, model=model, language=language, compute_type=compute_type,
         batch_size=batch_size, device=device, hf_token=hf_token,
         diarize=diarize, no_cache=no_cache, formats=formats,
     )
@@ -476,6 +482,63 @@ def report(
 
 
 # ---------------------------------------------------------------------------
+# hardware command
+# ---------------------------------------------------------------------------
+
+@app.command()
+def hardware(
+    config_file: Path | None = typer.Option(
+        None, "--config", "-c",
+        help="Check a config file's requested transcription.device against what's actually available.",
+    ),
+) -> None:
+    """
+    [bold]Detect compute hardware[/bold]: show which devices (CPU, NVIDIA CUDA,
+    Intel GPU, Intel NPU) are available for transcription, and which one
+    "auto" will pick.
+
+    Examples:
+
+        audio2report hardware
+
+        audio2report hardware --config configs/intel_gpu.yaml
+    """
+    from rich.markup import escape
+    from rich.table import Table
+
+    from audio2report.hardware import detect_hardware
+
+    report = detect_hardware()
+
+    table = Table(title="Detected compute hardware", show_lines=False)
+    table.add_column("Device")
+    table.add_column("Available")
+    table.add_column("Name")
+    table.add_column("Detail")
+    for d in report.devices:
+        status = "[green]yes[/green]" if d.available else "[dim]no[/dim]"
+        table.add_row(d.id, status, escape(d.name or "—"), escape(d.detail or "—"))
+    console.print(table)
+    console.print(f"\nAuto mode will use: [bold]{report.recommended}[/bold]")
+
+    if config_file is not None:
+        cfg = load_config(config_file)
+        requested = cfg.transcription.device or "auto"
+        console.print(
+            f"\nConfig [bold]{config_file}[/bold] requests "
+            f"backend=[bold]{cfg.transcription.backend}[/bold] "
+            f"device=[bold]{requested}[/bold]"
+        )
+        try:
+            from audio2report.utils import pick_device
+            resolved = pick_device(cfg.transcription.device, cfg.transcription.backend)
+        except (RuntimeError, ValueError) as exc:
+            console.print(f"[red]✗ not usable:[/red] {escape(str(exc))}")
+            raise typer.Exit(code=1) from exc
+        console.print(f"[green]✓ available[/green] — will resolve to device '{resolved}'")
+
+
+# ---------------------------------------------------------------------------
 # config subcommand group
 # ---------------------------------------------------------------------------
 
@@ -486,7 +549,10 @@ app.add_typer(config_app)
 @config_app.command("init")
 def config_init(
     output: Path = typer.Option(Path("config.yaml"), "--output", "-o", help="Destination path."),
-    preset: str = typer.Option("default", "--preset", help="Preset: default | cpu_fast | gpu_full."),
+    preset: str = typer.Option(
+        "default", "--preset",
+        help="Preset: default | cpu_fast | gpu_full | intel_gpu | intel_npu.",
+    ),
 ) -> None:
     """Generate a starter YAML config file from a built-in preset."""
     from importlib.resources import files
@@ -496,7 +562,7 @@ def config_init(
         content = src.read_text(encoding="utf-8")
     except FileNotFoundError:
         console.print(f"[red]Preset '{preset}' not found.[/red]  "
-                      f"Available: default, cpu_fast, gpu_full")
+                      f"Available: default, cpu_fast, gpu_full, intel_gpu, intel_npu")
         raise typer.Exit(code=1)
     output.write_text(content, encoding="utf-8")
     console.print(f"[green]Config written to {output}[/green]")

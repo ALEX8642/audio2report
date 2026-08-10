@@ -1,0 +1,112 @@
+# audio2report — Intel GPU/NPU image
+# Base: Ubuntu 24.04 + Intel GPU (Level-Zero/OpenCL) and NPU userspace runtime,
+# for OpenVINO-accelerated transcription on Intel Arc iGPUs and NPUs
+# (e.g. Core Ultra "Series 3" / Panther Lake).
+#
+# Requires on the HOST:
+#   - Intel GPU on bare-metal Linux: /dev/dri present, host user in the
+#     'render' group.
+#   - Intel GPU under WSL2: /dev/dxg present instead (no /dev/dri under
+#     WSL2) — pass --device /dev/dxg AND bind-mount -v /usr/lib/wsl:/usr/lib/wsl
+#     (the container needs the host's libdxcore.so/libd3d12*.so shim
+#     libraries; --device alone only passes the device node, not these
+#     libraries). Confirmed working end-to-end with a recent (2025+)
+#     compute-runtime release; older releases (e.g. late-2024) enumerate
+#     CPU-only even with correct passthrough. The Windows host also needs
+#     an up-to-date Intel graphics driver — see
+#     https://github.com/intel/compute-runtime/blob/master/documentation/WSL.md
+#     Note: the *first* GPU access after installing/upgrading the driver can
+#     take several minutes (one-time host-side warm-up) — this looks like a
+#     hang but isn't; subsequent runs are fast.
+#   - Intel NPU: /dev/accel present (Linux NPU kernel driver) — not
+#     available under WSL2 as of this writing; GPU-only hosts can omit
+#     this device.
+#
+# Usage (bare-metal Linux):
+#   docker build -f Dockerfile.intel -t audio2report:intel .
+#   docker run --rm --device /dev/dri \
+#       -v ./recordings:/data/in:ro -v ./output:/data/out \
+#       -e HF_TOKEN=$HF_TOKEN \
+#       audio2report:intel dual /data/in --out /data/out \
+#       --config /app/configs/intel_gpu.yaml --diarize
+#
+#   # With NPU also passed through:
+#   docker run --rm --device /dev/dri --device /dev/accel ... audio2report:intel ...
+#
+# Usage (WSL2):
+#   docker run --rm --device /dev/dxg -v /usr/lib/wsl:/usr/lib/wsl \
+#       -v ./recordings:/data/in:ro -v ./output:/data/out \
+#       audio2report:intel dual /data/in --out /data/out \
+#       --config /app/configs/intel_gpu.yaml
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1
+
+# Base system dependencies (Ubuntu 24.04 ships Python 3.12 natively)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-dev \
+        python3-pip \
+        ffmpeg \
+        curl \
+        ca-certificates \
+        git \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3 /usr/bin/python
+
+# -----------------------------------------------------------------------
+# Intel GPU userspace runtime (Level-Zero + OpenCL ICD for Arc iGPU compute)
+# Pinned release, per Intel's official OpenVINO docker_ci templates.
+# -----------------------------------------------------------------------
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ocl-icd-libopencl1 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Use a recent compute-runtime release — older releases (pre-2025) predate
+# driver support for newer Arc iGPU silicon (e.g. Panther Lake / Core Ultra
+# "Series 3"), and will enumerate CPU-only even with correct passthrough.
+RUN mkdir /tmp/gpu_deps && cd /tmp/gpu_deps && \
+    curl -L -O https://github.com/intel/intel-graphics-compiler/releases/download/v2.38.2/intel-igc-core-2_2.38.2+22051_amd64.deb && \
+    curl -L -O https://github.com/intel/intel-graphics-compiler/releases/download/v2.38.2/intel-igc-opencl-2_2.38.2+22051_amd64.deb && \
+    curl -L -O https://github.com/intel/compute-runtime/releases/download/26.27.39122.11/intel-opencl-icd_26.27.39122.11-0_amd64.deb && \
+    curl -L -O https://github.com/intel/compute-runtime/releases/download/26.27.39122.11/libigdgmm12_22.10.0_amd64.deb && \
+    curl -L -O https://github.com/intel/compute-runtime/releases/download/26.27.39122.11/libze-intel-gpu1_26.27.39122.11-0_amd64.deb && \
+    dpkg -i ./*.deb && rm -rf /tmp/gpu_deps
+
+# -----------------------------------------------------------------------
+# Intel NPU userspace runtime (only exercised if /dev/accel is passed
+# through at `docker run` time — harmless to install unconditionally).
+# -----------------------------------------------------------------------
+ARG INTEL_NPU_DRIVER_URL=https://github.com/intel/linux-npu-driver/releases/download/v1.35.0/linux-npu-driver-v1.35.0.20260722-29947505341-ubuntu2404.tar.gz
+ARG INTEL_LEVEL_ZERO_URL=https://github.com/oneapi-src/level-zero/releases/download/v1.32.0/libze1_1.32.0+u24.04_amd64.deb
+
+RUN mkdir /tmp/npu_deps && cd /tmp/npu_deps \
+    && curl -L ${INTEL_NPU_DRIVER_URL} | tar -xzf - \
+    && curl -L -O ${INTEL_LEVEL_ZERO_URL} \
+    && apt-get update \
+    && apt-get install --no-install-recommends -y ./*.deb \
+    && rm -rf /var/lib/apt/lists/* /tmp/npu_deps
+
+WORKDIR /app
+
+COPY pyproject.toml LICENSE .
+COPY audio2report/ ./audio2report/
+
+# This image never has an NVIDIA GPU, so pin CPU-only torch/torchaudio wheels
+# *before* installing the diarize extra — otherwise pip pulls pyannote.audio's
+# default CUDA-enabled torch build (several GB of useless NVIDIA libraries).
+RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Install with Intel (OpenVINO) + diarization extras.
+RUN pip install --no-cache-dir ".[intel,diarize]"
+
+ENV HF_HOME=/root/.cache/huggingface
+VOLUME ["/root/.cache/huggingface", "/data/in", "/data/out"]
+
+ENTRYPOINT ["audio2report"]
+CMD ["--help"]

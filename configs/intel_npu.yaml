@@ -1,0 +1,47 @@
+# audio2report — Intel NPU preset
+# Runs Whisper on an Intel NPU (e.g. Core Ultra "Series 3" / Panther Lake) via
+# OpenVINO. Low-power, single-stream — good for background/quiet transcription,
+# not raw throughput (prefer intel_gpu.yaml for speed). Requires:
+# pip install "audio2report[intel]" and the Linux NPU driver + /dev/accel
+# exposed on the host (not currently reachable from WSL2 — see
+# docs/INTEL_ACCELERATION_ROADMAP.md for bare-metal verification steps).
+
+mode: dual
+cache: true
+
+audio:
+  inter_file_gap_sec: 0.5
+  min_duration_sec: 1.0
+
+transcription:
+  backend: openvino
+  model: FluidInference/whisper-large-v3-turbo-int4-ov-npu   # NPU-tuned OpenVINO IR model
+  language: null
+  device: npu
+
+diarization:
+  enabled: false       # keep the run single-stream/low-power; enable manually if needed
+
+alignment:
+  anchor_sim_threshold: 0.90
+  min_anchor_text_len: 25
+
+deduplication:
+  enabled: true
+  sim_threshold: 0.86
+  time_tolerance_sec: 2.5
+  min_text_len: 18
+
+output:
+  formats:
+    - json
+    - csv
+    - txt
+  include_suppressed: true
+
+llm:
+  enabled: false
+  provider: ollama
+  model: llama3
+  base_url: "http://localhost:11434"
+  prompt_template: audit_report

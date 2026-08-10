@@ -75,6 +75,7 @@ class RunMeta:
     prime_folders: list[str]
     primes: list[str]
     device: str
+    backend: str
     model: str
     language: str | None
     diarize: bool

@@ -90,6 +90,20 @@ class TestYAMLConfig:
         assert cfg.transcription.model == "large-v3"
         assert cfg.diarization.enabled is True
 
+    def test_intel_gpu_preset_file(self):
+        from pathlib import Path
+        preset = Path(__file__).parent.parent.parent / "configs" / "intel_gpu.yaml"
+        cfg = load_config(preset)
+        assert cfg.transcription.backend == "openvino"
+        assert cfg.transcription.device == "gpu"
+
+    def test_intel_npu_preset_file(self):
+        from pathlib import Path
+        preset = Path(__file__).parent.parent.parent / "configs" / "intel_npu.yaml"
+        cfg = load_config(preset)
+        assert cfg.transcription.backend == "openvino"
+        assert cfg.transcription.device == "npu"
+
 
 # ---------------------------------------------------------------------------
 # auto_compute_type
@@ -143,6 +157,25 @@ class TestConfigValidation:
     def test_invalid_field_type_raises(self):
         with pytest.raises(Exception):
             TranscriptionConfig(batch_size="not_an_int")
+
+    def test_invalid_backend_raises(self):
+        with pytest.raises(Exception):
+            TranscriptionConfig(backend="tensorrt")
+
+    def test_invalid_device_raises(self):
+        with pytest.raises(Exception):
+            TranscriptionConfig(device="tpu")
+
+    def test_valid_backends_accepted(self):
+        assert TranscriptionConfig(backend="whisperx").backend == "whisperx"
+        assert TranscriptionConfig(backend="openvino").backend == "openvino"
+
+    def test_valid_devices_accepted(self):
+        for device in ["auto", "cpu", "cuda", "gpu", "npu"]:
+            assert TranscriptionConfig(device=device).device == device
+
+    def test_device_none_is_valid(self):
+        assert TranscriptionConfig(device=None).device is None
 
     def test_extra_fields_ignored_gracefully(self, tmp_path):
         # Pydantic v2 default: extra fields ignored

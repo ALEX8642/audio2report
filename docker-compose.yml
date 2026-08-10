@@ -4,11 +4,12 @@
 # Set environment variables to control paths:
 #   INPUT_DIR  — folder containing the 'prime' audio subfolders (default: ./recordings)
 #   OUTPUT_DIR — where outputs are written                       (default: ./output)
-#   HF_TOKEN   — Hugging Face token for diarization (GPU service only)
+#   HF_TOKEN   — Hugging Face token for diarization (GPU/Intel services only)
 #
 # Examples:
 #   docker compose run audio2report-cpu dual /data/in --out /data/out
 #   docker compose run audio2report-gpu dual /data/in --out /data/out --diarize --config /app/configs/gpu_full.yaml
+#   docker compose run audio2report-intel dual /data/in --out /data/out --config /app/configs/intel_gpu.yaml --diarize
 
 services:
 
@@ -48,6 +49,41 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+  # -----------------------------------------------------------------------
+  # Intel service — Intel Arc iGPU / NPU acceleration via OpenVINO.
+  # Requires Intel GPU/NPU drivers on the host.
+  #
+  # Device path depends on the host:
+  #   - Bare-metal Linux: /dev/dri (active below).
+  #   - WSL2: no /dev/dri exists — use /dev/dxg instead (confirmed working;
+  #     comment out /dev/dri and uncomment /dev/dxg below), AND add a
+  #     volumes entry for /usr/lib/wsl:/usr/lib/wsl (the container needs the
+  #     host's dxcore/d3d12 shim libraries, not just the device node). Also
+  #     needs an up-to-date Windows-host Intel graphics driver and a recent
+  #     (2025+) compute-runtime in the image — see Dockerfile.intel's header
+  #     comment.
+  # -----------------------------------------------------------------------
+  audio2report-intel:
+    build:
+      context: .
+      dockerfile: Dockerfile.intel
+    image: audio2report:intel
+    volumes:
+      - "${INPUT_DIR:-./recordings}:/data/in:ro"
+      - "${OUTPUT_DIR:-./output}:/data/out"
+      - huggingface_cache:/root/.cache/huggingface
+      # - /usr/lib/wsl:/usr/lib/wsl   # WSL2 only — required alongside /dev/dxg below
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+    devices:
+      - /dev/dri:/dev/dri
+      # - /dev/dxg:/dev/dxg   # WSL2 — use this instead of /dev/dri above
+      # Intel NPU passthrough — only present on bare-metal Linux hosts with
+      # the NPU kernel driver installed (not available under WSL2). Mapping
+      # a host path that doesn't exist breaks `docker compose up`, so this
+      # is commented out by default; uncomment on real NPU hardware.
+      # - /dev/accel:/dev/accel
 
 volumes:
   huggingface_cache:

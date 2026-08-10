@@ -64,11 +64,12 @@ pip install -e ".[full]"
 
 | Extra | Installs | Use when |
 |---|---|---|
-| `whisperx` | WhisperX + faster-whisper | You want local ASR transcription |
+| `whisperx` | WhisperX + faster-whisper | You want local ASR transcription (NVIDIA CUDA or CPU) |
 | `diarize` | pyannote.audio ≥ 3.0 | You want speaker role labelling |
 | `llm` | openai ≥ 1.0 | You want OpenAI / LM Studio / llama.cpp |
 | `ui` | streamlit ≥ 1.30 | You want the web interface |
-| `full` | all of the above | Everything |
+| `intel` | openvino, openvino-genai | You want Intel Arc iGPU / NPU-accelerated transcription (Linux; see [Intel acceleration roadmap](docs/INTEL_ACCELERATION_ROADMAP.md)) |
+| `full` | whisperx, diarize, llm, ui | Everything except `intel` (kept separate — see roadmap doc) |
 | `dev` | pytest, ruff, mypy | Development |
 
 ### ffmpeg (required for audio normalisation)
@@ -160,6 +161,8 @@ Arguments:
 Options:
   --output-dir, -o PATH   Where to write outputs [default: ROOT/audio2report_out]
   --config, -c PATH       YAML config file [default: built-in defaults]
+  --backend TEXT          Transcription backend: whisperx | openvino
+  --device TEXT           Device: auto | cpu | cuda | gpu | npu
   --report                Generate an LLM report after transcription
   --llm-provider TEXT     Override config: LLM provider (ollama|openai)
   --llm-model TEXT        Override config: LLM model name
@@ -205,6 +208,15 @@ Options:
 ```bash
 audio2report config init          # write default config to ./audio2report.yaml
 audio2report config show          # print the resolved config (with current overrides)
+```
+
+### `audio2report hardware`
+
+Detect what compute hardware is available for transcription (CPU, NVIDIA CUDA, Intel GPU, Intel NPU), and optionally check whether a config file's requested device is actually usable.
+
+```bash
+audio2report hardware
+audio2report hardware --config configs/intel_gpu.yaml
 ```
 
 ---
@@ -253,6 +265,8 @@ audio2report dual meeting/ --config my_config.yaml
 | `configs/default.yaml` | GPU with large-v3, no diarization |
 | `configs/cpu_fast.yaml` | CPU-only machines (medium model, int8) |
 | `configs/gpu_full.yaml` | GPU with diarization enabled |
+| `configs/intel_gpu.yaml` | Intel Arc iGPU (OpenVINO backend), diarization enabled |
+| `configs/intel_npu.yaml` | Intel NPU (OpenVINO backend), low-power single-stream |
 
 ---
 
@@ -289,6 +303,13 @@ docker compose run --rm audio2report-cpu \
 ```bash
 docker compose run --rm audio2report-gpu \
   audio2report dual /data/meeting/ --output-dir /data/outputs/
+```
+
+### Intel GPU/NPU (Linux; requires Intel GPU drivers, see docs/INTEL_ACCELERATION_ROADMAP.md)
+
+```bash
+docker compose run --rm audio2report-intel \
+  audio2report dual /data/meeting/ --config /app/configs/intel_gpu.yaml --output-dir /data/outputs/
 ```
 
 Mount your data with `-v /path/to/your/meetings:/data`.

@@ -52,6 +52,7 @@ def _make_meta(**kwargs) -> RunMeta:
         prime_folders=["A", "B"],
         primes=["Alice", "Bob"],
         device="cpu",
+        backend="whisperx",
         model="large-v3",
         language="en",
         diarize=False,

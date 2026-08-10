@@ -110,18 +110,58 @@ if __name__ == "__main__":
         st.caption("Dual-mic transcription & report generation")
         st.divider()
 
+        st.subheader("🔧 Detected hardware")
+        from audio2report.hardware import detect_hardware
+
+        @st.cache_data(ttl=30, show_spinner=False)
+        def _cached_detect_hardware():
+            # Streamlit reruns the whole script on every widget interaction;
+            # OpenVINO device enumeration is too slow to redo on every one,
+            # so cache it briefly instead of calling detect_hardware() live.
+            return detect_hardware()
+
+        _hw_report = _cached_detect_hardware()
+        _hw_labels = {"cpu": "CPU", "cuda": "NVIDIA CUDA", "gpu": "Intel GPU", "npu": "Intel NPU"}
+        with st.expander(
+            f"Auto will use: **{_hw_labels.get(_hw_report.recommended, _hw_report.recommended)}**",
+            expanded=False,
+        ):
+            for _d in _hw_report.devices:
+                _icon = "✅" if _d.available else "⬜"
+                _label = _hw_labels.get(_d.id, _d.id)
+                _extra = _d.name or _d.detail or ""
+                st.caption(f"{_icon} **{_label}** — {_extra}" if _extra else f"{_icon} **{_label}**")
+        st.divider()
+
         st.subheader("Mode")
         mode = st.radio("Pipeline mode", ["dual", "single"], horizontal=True)
 
         st.subheader("Transcription")
+        backend = st.selectbox("Backend", ["whisperx", "openvino"], index=0)
         whisper_model = st.selectbox(
             "Whisper model",
             ["large-v3", "large-v2", "medium", "small", "base", "tiny"],
             index=0,
+        ) if backend == "whisperx" else st.text_input(
+            "OpenVINO model (HF repo id)", value="OpenVINO/whisper-large-v3-int4-ov"
         )
         language = st.text_input("Language (blank = auto-detect)", value="")
-        device = st.selectbox("Device", ["auto", "cuda", "cpu"], index=0)
+        device = st.selectbox("Device", ["auto", "cpu", "cuda", "gpu", "npu"], index=0)
         compute_type = st.selectbox("Compute type", ["auto", "float16", "int8"], index=0)
+
+        if device != "auto":
+            _selected_info = _hw_report.get(device)
+            if _selected_info is not None and not _selected_info.available:
+                st.warning(
+                    f"⚠️ '{_hw_labels.get(device, device)}' was not detected on this "
+                    f"system — the run will fail at pipeline start. "
+                    f"({_selected_info.detail or 'unavailable'})"
+                )
+        if backend == "whisperx" and device in ("gpu", "npu"):
+            st.warning(
+                "⚠️ The whisperx backend cannot use Intel GPU/NPU — "
+                "switch Backend to 'openvino' above."
+            )
 
         st.subheader("Diarization")
         diarize = st.checkbox("Enable speaker diarization", value=False)
@@ -161,6 +201,7 @@ if __name__ == "__main__":
             "mode": mode,
             "cache": cache,
             "transcription": {
+                "backend": backend,
                 "model": whisper_model,
                 "language": language.strip() or None,
                 "device": device_val,
@@ -418,6 +459,7 @@ if __name__ == "__main__":
             if offset is not None:
                 st.caption(
                     f"Clock offset B−A: **{offset:+.3f} s** | "
+                    f"Backend: {meta.get('backend', '—')} | "
                     f"Device: {meta.get('device', '—')} | "
                     f"Model: {meta.get('model', '—')}"
                 )

@@ -93,14 +93,86 @@ def load_json(path: Path) -> Any:
 # Device helpers
 # ---------------------------------------------------------------------------
 
-def pick_device(device_arg: str | None) -> str:
-    if device_arg:
+_VALID_DEVICES = {"cpu", "cuda", "gpu", "npu"}
+
+# Single source of truth for which devices each transcription backend can
+# actually use. Both auto-selection and explicit-device validation below
+# derive from this — there is no separate blocklist to keep in sync.
+_BACKEND_DEVICES = {
+    "whisperx": {"cpu", "cuda"},
+    "openvino": {"cpu", "gpu", "npu"},
+}
+
+
+def _allowed_devices(backend: str) -> set[str]:
+    allowed = _BACKEND_DEVICES.get(backend)
+    if allowed is None:
+        raise ValueError(
+            f"Unknown transcription backend: {backend!r}. "
+            f"Valid options: {', '.join(sorted(_BACKEND_DEVICES))}"
+        )
+    return allowed
+
+
+def pick_device(device_arg: str | None, backend: str = "whisperx") -> str:
+    """
+    Resolve the transcription device for *backend*.
+
+    - ``None`` / ``"auto"``: pick the best available device *that this
+      backend can use* (CUDA > Intel GPU > Intel NPU > CPU), silently
+      degrading to whatever is actually present. Auto-selection is
+      backend-aware so it never recommends a device the backend can't use.
+    - An explicit device (``"cpu"``/``"cuda"``/``"gpu"``/``"npu"``): returned
+      as-is if available *and* supported by *backend*, otherwise raises
+      ``RuntimeError`` — an explicit request that can't be honored must fail
+      loudly, never fall back.
+    """
+    from audio2report.hardware import detect_hardware
+
+    allowed = _allowed_devices(backend)
+
+    if device_arg is None or device_arg == "auto":
+        return detect_hardware().best_available(allowed)
+
+    if device_arg not in _VALID_DEVICES:
+        raise ValueError(
+            f"Unknown device '{device_arg}'. Valid options: "
+            f"auto, {', '.join(sorted(_VALID_DEVICES))}"
+        )
+
+    if device_arg not in allowed:
+        raise RuntimeError(
+            f"transcription.backend={backend!r} cannot use device={device_arg!r}. "
+            f"Supported devices for this backend: {', '.join(sorted(allowed))}."
+        )
+
+    report = detect_hardware()
+    info = report.get(device_arg)
+    if info is not None and info.available:
         return device_arg
-    try:
-        import torch
-        return "cuda" if torch.cuda.is_available() else "cpu"
-    except Exception:
-        return "cpu"
+
+    detected = ", ".join(
+        f"{d.id}{'' if d.available else '(unavailable)'}" for d in report.devices
+    )
+    reason = f" ({info.detail})" if info and info.detail else ""
+    raise RuntimeError(
+        f"Requested device '{device_arg}' is not available{reason}. "
+        f"Detected: {detected}. Run 'audio2report hardware' for details."
+    )
+
+
+def validate_backend_device(backend: str, device: str) -> None:
+    """
+    Defensive re-check that *device* is one *backend* supports — for callers
+    (e.g. ``get_transcriber``) that may receive an already-resolved device
+    without having gone through ``pick_device`` themselves.
+    """
+    if device not in _allowed_devices(backend):
+        raise RuntimeError(
+            f"transcription.backend={backend!r} cannot use device={device!r}. "
+            f"Supported devices for this backend: "
+            f"{', '.join(sorted(_allowed_devices(backend)))}."
+        )
 
 
 def auto_compute_type(compute_type: str, device: str) -> str:

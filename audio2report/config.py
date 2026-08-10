@@ -5,7 +5,10 @@ import os
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+_VALID_BACKENDS = {"whisperx", "openvino"}
+_VALID_DEVICES = {"auto", "cpu", "cuda", "gpu", "npu"}
 
 
 class AudioConfig(BaseModel):
@@ -14,12 +17,26 @@ class AudioConfig(BaseModel):
 
 
 class TranscriptionConfig(BaseModel):
-    backend: str = "whisperx"
-    model: str = "large-v3"
+    backend: str = "whisperx"          # whisperx (CUDA/CPU) | openvino (CPU/Intel GPU/Intel NPU)
+    model: str = "large-v3"            # whisperx: short model name; openvino: HF repo id of an OpenVINO IR model
     language: str | None = None
-    compute_type: str = "float16"
-    batch_size: int = 8
-    device: str | None = None  # None → auto-detect (cuda if available, else cpu)
+    compute_type: str = "float16"      # whisperx-only; ignored by the openvino backend
+    batch_size: int = 8                # whisperx-only; ignored by the openvino backend
+    device: str | None = None          # None/"auto" → best available; or cpu | cuda | gpu | npu
+
+    @field_validator("backend")
+    @classmethod
+    def _validate_backend(cls, v: str) -> str:
+        if v not in _VALID_BACKENDS:
+            raise ValueError(f"Invalid backend {v!r}. Valid options: {', '.join(sorted(_VALID_BACKENDS))}")
+        return v
+
+    @field_validator("device")
+    @classmethod
+    def _validate_device(cls, v: str | None) -> str | None:
+        if v is not None and v not in _VALID_DEVICES:
+            raise ValueError(f"Invalid device {v!r}. Valid options: {', '.join(sorted(_VALID_DEVICES))}")
+        return v
 
 
 class DiarizationConfig(BaseModel):

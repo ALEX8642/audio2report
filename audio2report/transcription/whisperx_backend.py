@@ -11,23 +11,11 @@ from typing import Any
 
 from audio2report._log import get_logger
 from audio2report.config import TranscriptionConfig
+from audio2report.transcription._diarize import run_diarization
+from audio2report.transcription.base import is_effectively_empty
 from audio2report.utils import auto_compute_type
 
 logger = get_logger(__name__)
-
-
-def _is_effectively_empty(result: dict[str, Any]) -> bool:
-    segments = result.get("segments") or []
-    if not segments:
-        return True
-    total_text = " ".join((s.get("text") or "").strip() for s in segments).strip()
-    if len(total_text) < 3:
-        return True
-    total_duration = sum(
-        max(0.0, float(s.get("end", 0.0) or 0.0) - float(s.get("start", 0.0) or 0.0))
-        for s in segments
-    )
-    return total_duration < 0.5
 
 
 class WhisperXTranscriber:
@@ -113,7 +101,7 @@ class WhisperXTranscriber:
         audio = whisperx.load_audio(str(wav_path))
         result: dict[str, Any] = self._model.transcribe(audio, batch_size=self._config.batch_size)
 
-        if _is_effectively_empty(result):
+        if is_effectively_empty(result):
             result["diarization_segments"] = []
             result["skipped_reason"] = "no_speech_or_too_short"
             return result
@@ -129,18 +117,9 @@ class WhisperXTranscriber:
         )
 
         if diarize:
-            if not hf_token:
-                raise RuntimeError(
-                    "Diarization requested but no Hugging Face token was provided. "
-                    "Pass --hf-token or set the HF_TOKEN environment variable."
-                )
-            diarize_model = whisperx.diarize.DiarizationPipeline(
-                token=hf_token,
-                device=self._device,
+            result = run_diarization(
+                wav_path, result, hf_token=hf_token, device=self._device
             )
-            diar_segments = diarize_model(str(wav_path))
-            result = whisperx.assign_word_speakers(diar_segments, result)
-            result["diarization_segments"] = diar_segments.to_dict("records")
         else:
             result["diarization_segments"] = []
 
