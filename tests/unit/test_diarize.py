@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from audio2report.transcription._diarize import run_diarization
+from audio2report.transcription._diarize import resolve_diarization_device, run_diarization
 
 
 def _turn(start, end):
@@ -118,3 +118,39 @@ class TestRunDiarization:
         result = run_diarization(tmp_path / "a.wav", asr_result, hf_token="tok", device="cpu")
 
         assert result["segments"][0]["speaker"] == "SPEAKER_00"
+
+
+def _fake_torch(*, cuda: bool, xpu: bool | None):
+    """xpu=None simulates a torch build with no XPU support at all (no
+    torch.xpu attribute, e.g. a CPU-only or CUDA-only wheel)."""
+    torch_mod = MagicMock()
+    torch_mod.cuda.is_available.return_value = cuda
+    if xpu is None:
+        del torch_mod.xpu
+    else:
+        torch_mod.xpu.is_available.return_value = xpu
+    return torch_mod
+
+
+class TestResolveDiarizationDevice:
+    def test_prefers_cuda_when_available(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "torch", _fake_torch(cuda=True, xpu=True))
+        assert resolve_diarization_device() == "cuda"
+
+    def test_falls_back_to_xpu_when_no_cuda(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "torch", _fake_torch(cuda=False, xpu=True))
+        assert resolve_diarization_device() == "xpu"
+
+    def test_falls_back_to_cpu_when_neither_available(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "torch", _fake_torch(cuda=False, xpu=False))
+        assert resolve_diarization_device() == "cpu"
+
+    def test_falls_back_to_cpu_when_torch_has_no_xpu_attribute(self, monkeypatch):
+        """A torch build without XPU support at all (e.g. CPU-only wheel)
+        has no torch.xpu attribute — must not raise, must fall back to cpu."""
+        monkeypatch.setitem(sys.modules, "torch", _fake_torch(cuda=False, xpu=None))
+        assert resolve_diarization_device() == "cpu"
+
+    def test_falls_back_to_cpu_when_torch_not_installed(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "torch", None)
+        assert resolve_diarization_device() == "cpu"

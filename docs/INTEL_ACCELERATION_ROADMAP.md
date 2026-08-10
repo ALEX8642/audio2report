@@ -165,52 +165,98 @@ inside WSL2.
      --device npu --out /tmp/npu_test`, and confirm `run_meta.json` shows
      `backend: openvino, device: npu` (not a silent fallback).
 
-### ⚠ High-priority follow-up: GPU-accelerated diarization via PyTorch XPU
+### GPU-accelerated diarization via PyTorch XPU
 
-**Status: not started — highest-priority next item.** Found while running
-audio2report against real audit recordings (2026-08-10): with diarization
-enabled, the Intel iGPU sits nearly idle while CPU is pinned near 100% across
-~10 cores for extended periods. Root cause: **diarization
-(`audio2report/transcription/_diarize.py`, via `pyannote.audio`) has no Intel
-GPU acceleration at all today** — it only ever resolves to `cuda` or `cpu`
-(see `OpenVINOTranscriber.transcribe()`'s `diar_device` resolution), and on
-this hardware that means CPU, unaccelerated. For a diarization-enabled batch
-over hours of real audio, this CPU-bound diarization step dominates total
-wall-clock time completely — the fast GPU transcription (~8.7x realtime,
-confirmed) is not the bottleneck; diarization is, by a wide margin. This
-directly undercuts the value of the GPU work in Phase 1 for the diarization
-use case, so it's the natural next priority.
+**Status: implemented and verified working (2026-08-10).** Diarization was
+found to be entirely CPU-bound (the Intel iGPU sat nearly idle at 1% while
+CPU pinned near 100% across ~10 cores during a real batch run), dominating
+wall-clock time for any diarization-enabled run — the fast GPU transcription
+(~11.7x realtime, confirmed on the full 6.6-hour real dataset) was never the
+bottleneck; diarization was, overwhelmingly.
 
-**The fix is plausible and not yet attempted:** PyTorch publishes native
-`+xpu` wheels with genuine Intel Arc GPU support (confirmed via
-`download.pytorch.org/whl/xpu/` — e.g. `torch-2.10.0+xpu-cp312-...`), separate
-infrastructure from OpenVINO (this is PyTorch's own upstream Intel GPU
-backend, `torch.device("xpu")`, not something pyannote-specific). What's
-needed:
+**Fix**: `audio2report/transcription/_diarize.py` now has
+`resolve_diarization_device()`, which prefers `cuda` > `xpu` (Intel GPU, via
+PyTorch's native XPU backend — separate infrastructure from OpenVINO, which
+the ASR backend uses) > `cpu`. `OpenVINOTranscriber` uses this instead of
+its old CUDA-only check. `pyannote.audio`'s ops turned out to work fine on
+XPU with no unimplemented-op crashes — verified with a real
+`pyannote/speaker-diarization-community-1` pipeline moved to
+`torch.device("xpu")` and run against real audit recordings, both directly
+and through the full `audio2report single --diarize` CLI path.
 
-1. Install the `+xpu` torch build instead of the default (CUDA) wheels
-   before installing the `diarize` extra — same pattern already used in
-   `Dockerfile.intel` to pin CPU-only torch, just a different wheel index.
-2. Add `"xpu"` as a resolvable diarization device in `_diarize.py`
-   (currently hardcoded to only ever try `cuda`/`cpu`), and detect Intel
-   GPU availability for this purpose (reuse `audio2report/hardware.py`'s
-   existing OpenVINO-based Intel GPU detection as the availability signal,
-   even though the actual diarization inference would go through PyTorch's
-   XPU backend, not OpenVINO).
-3. **Real, unverified risk**: `pyannote.audio` does not officially test or
-   support the `xpu` device string. PyTorch's XPU backend implements the
-   standard tensor/`nn.Module` API, so it may just work — or pyannote may
-   hit an operation with no XPU kernel implementation and fail, requiring a
-   partial CPU fallback for specific submodules. This needs to be tried and
-   verified on real hardware (this same Framework 13 Pro Series 3 machine is
-   available for that), not assumed.
-4. If XPU doesn't pan out for pyannote specifically, a cheaper partial win
-   is fixing the *other* diarization inefficiency noticed in the same
-   session: the pyannote pipeline is reloaded from scratch for every file
-   in a batch (`Pipeline.from_pretrained(...)` inside `run_diarization()`,
-   called once per file) instead of being loaded once and reused, unlike
-   the Whisper model. Doesn't fix the CPU-bound nature of the work, but
-   removes repeated model-load overhead across a multi-file batch.
+**Getting XPU working required two things beyond installing `torch+xpu`,
+neither obvious from PyTorch's own install docs:**
+
+1. **A genuinely separate system package from what OpenVINO needs.**
+   OpenVINO's GPU plugin only needed `intel-opencl-icd`/`libze-intel-gpu1`
+   (the Intel-specific Level-Zero driver/ICD, already covered in the iGPU
+   section above). PyTorch's Unified Runtime follows the standard
+   Level-Zero loader-discovery spec properly and additionally needs
+   `libze_loader.so` — the generic Level-Zero loader library, from a
+   **different** package (`level-zero`/`libze1`, not
+   `intel-level-zero-gpu`). Without it, `torch.xpu.is_available()` silently
+   returns `False` with a "XPU device count is zero" warning — no error
+   pointing at the real cause. Confirmed via `SYCL_UR_TRACE=1`: the
+   Level-Zero adapter (`libur_adapter_level_zero.so.0`) loads fine, it's
+   the underlying driver loader that's missing.
+   Install (Ubuntu 24.04, matching `Dockerfile.intel`'s other driver
+   packages):
+   ```
+   curl -L -O https://github.com/oneapi-src/level-zero/releases/download/v1.32.0/libze1_1.32.0+u24.04_amd64.deb
+   sudo dpkg -i libze1_1.32.0+u24.04_amd64.deb
+   ```
+2. **A `torch+xpu` build, from a separate pip index**, not the default
+   PyPI wheel:
+   ```
+   pip install --index-url https://download.pytorch.org/whl/xpu torch==2.11.0+xpu torchaudio==2.11.0+xpu
+   ```
+   (2.11.0 chosen as the highest version with a matching `torchaudio+xpu`
+   build at the time of writing; check
+   `download.pytorch.org/whl/xpu/torch/` and `.../torchaudio/` for current
+   versions.) This is **not** wired into `pyproject.toml`'s `diarize`
+   extra — a different package index can't be expressed cleanly as a
+   standard extras dependency, and defaulting every `diarize`-extra install
+   to a niche wheel index would be surprising for non-Intel users. It's a
+   manual, documented opt-in step for now.
+
+**Real timing data** (Framework 13 Pro Series 3, isolated `pyannote.audio`
+diarization calls, apples-to-apples on the same files):
+
+| File | Audio duration | CPU | XPU |
+|---|---|---|---|
+| Short | 152s | 63.7s (2.4x realtime) | 166.9s (0.9x realtime) |
+| Long | 1800s (30 min) | 757.4s (2.4x realtime) | 194.2s (**9.3x realtime**) |
+
+CPU throughput is consistent (~2.4x realtime) regardless of file length.
+XPU has a large **one-time warm-up cost** (~164s, almost certainly first-use
+kernel JIT compilation) but then runs at roughly **60x realtime**
+steady-state — a clear net loss on a single short clip, a **3.9x wall-clock
+win** on the 30-minute file, and a much larger win for anything longer or
+batched. The warm-up cost was observed to persist **across separate process
+invocations**, not just within one process — a second, independent
+`python3` run finished in ~28s instead of ~164s, and a third in a
+follow-up process only needed a few seconds. The exact caching mechanism
+wasn't conclusively identified (no on-disk SYCL/Level-Zero kernel cache
+directory was found under `~/.cache` in this WSL2 session, despite the
+speedup persisting across processes — most likely a host-side driver cache,
+analogous to a GPU shader cache, invisible from inside the Linux
+filesystem) but the practical implication holds either way: **it's a
+one-time tax per machine session, not something paid per file or per
+process.** This significantly de-prioritizes the "cache the diarization
+pipeline object across files in a batch" optimization noted earlier — the
+expensive part (kernel compilation) isn't actually re-paid per file once
+the machine has warmed up, even though the Python-level `Pipeline` object
+is still reconstructed fresh each time.
+
+**Not yet done**: wiring `torch+xpu` into `Dockerfile.intel` (needs the
+`libze1` package added alongside the existing GPU driver packages, plus a
+documented way to get the `+xpu` torch build installed instead of the
+CPU-only pin currently there — these two are mutually exclusive per
+environment, so this would likely want to be a build arg or a separate
+image variant, not unconditional). Also not done: a corresponding real NPU
+timing comparison, or investigating whether `torch+xpu` can also see/use
+the NPU (unlikely — NPU access typically goes through a different runtime
+entirely, not Level-Zero-over-dxg).
 
 ## Phase 2 — Windows-native support (this repo, future session)
 

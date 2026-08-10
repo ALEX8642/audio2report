@@ -20,7 +20,7 @@ from typing import Any
 
 from audio2report._log import get_logger
 from audio2report.config import TranscriptionConfig
-from audio2report.transcription._diarize import run_diarization
+from audio2report.transcription._diarize import resolve_diarization_device, run_diarization
 from audio2report.transcription.base import is_effectively_empty
 
 logger = get_logger(__name__)
@@ -165,13 +165,11 @@ class OpenVINOTranscriber:
             return result
 
         if diarize:
-            # Diarization (pyannote/torch) is orthogonal to the ASR engine and
-            # has no Intel GPU/NPU support of its own — always resolved to
-            # cuda/cpu independently of the OpenVINO ASR device.
-            from audio2report.hardware import detect_hardware
-
-            cuda_info = detect_hardware().get("cuda")
-            diar_device = "cuda" if cuda_info and cuda_info.available else "cpu"
+            # Diarization (pyannote/torch) is orthogonal to the ASR engine —
+            # resolved to its own best device independently of the OpenVINO
+            # ASR device (PyTorch's XPU and OpenVINO's GPU are unrelated
+            # mechanisms, both capable of using the same Intel iGPU).
+            diar_device = resolve_diarization_device()
             result = run_diarization(wav_path, result, hf_token=hf_token, device=diar_device)
         else:
             result["diarization_segments"] = []

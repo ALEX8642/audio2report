@@ -1,8 +1,18 @@
 """Shared speaker diarization step, reused by every transcription backend.
 
-Diarization (pyannote.audio) is orthogonal to the ASR engine — it has no
-Intel GPU/NPU support of its own, so it always runs on ``cuda`` or ``cpu``
-regardless of which device the transcription backend itself is using.
+Diarization (pyannote.audio) is orthogonal to the ASR engine, so it's
+resolved to its own device independently of whatever device the ASR backend
+is using. It supports NVIDIA CUDA, Intel GPU (via PyTorch's native XPU
+backend — a different mechanism than OpenVINO, which the ASR backend uses),
+and CPU.
+
+Real-hardware timing on an Intel Arc iGPU (Framework 13 Pro Series 3):
+XPU has a large one-time warm-up cost (~164s, first-use kernel JIT
+compilation) but then runs at roughly 60x realtime; CPU has no warm-up but
+runs at a consistent ~2.4x realtime. XPU is a net loss for a single short
+clip but a large net win (~4x faster wall-clock, more for longer/batched
+runs) once that warm-up is amortized — see
+docs/INTEL_ACCELERATION_ROADMAP.md for the full writeup.
 
 This calls ``pyannote.audio`` directly rather than going through WhisperX's
 ``whisperx.diarize`` wrapper, so diarization works even when only the
@@ -17,6 +27,30 @@ from typing import Any
 # Matches the default model used by WhisperX's own DiarizationPipeline, so
 # diarization quality is consistent regardless of which ASR backend is used.
 _DEFAULT_DIARIZATION_MODEL = "pyannote/speaker-diarization-community-1"
+
+
+def resolve_diarization_device() -> str:
+    """
+    Best available PyTorch device for diarization: CUDA > Intel GPU (XPU) >
+    CPU. Independent of the ASR backend's own device — OpenVINO's device
+    concept and PyTorch's are unrelated mechanisms.
+    """
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return "cuda"
+    except ImportError:
+        pass
+
+    try:
+        import torch
+        if torch.xpu.is_available():
+            return "xpu"
+    except (ImportError, AttributeError):
+        # AttributeError: torch installed without XPU support (no torch.xpu).
+        pass
+
+    return "cpu"
 
 
 def run_diarization(
