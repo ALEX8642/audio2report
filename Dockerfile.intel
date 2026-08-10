@@ -114,8 +114,8 @@ COPY audio2report/ ./audio2report/
 # for GPU-accelerated diarization on the Intel iGPU instead (needs the
 # libze1 package above, already installed unconditionally for NPU support).
 # Real timing data (docs/INTEL_ACCELERATION_ROADMAP.md): xpu has a large
-# one-time warm-up cost, a net loss for a single short clip, a ~4x+
-# wall-clock win for anything longer or batched.
+# warm-up cost, a net loss for a single short clip, but a real ~2.5x
+# wall-clock win measured on a full real-world multi-hour batch.
 ARG TORCH_VARIANT=cpu
 RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/${TORCH_VARIANT}
 

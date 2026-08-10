@@ -230,31 +230,50 @@ diarization calls, apples-to-apples on the same files):
 CPU throughput is consistent (~2.4x realtime) regardless of file length.
 XPU has a large **one-time warm-up cost** (~164s, almost certainly first-use
 kernel JIT compilation) but then runs at roughly **60x realtime**
-steady-state — a clear net loss on a single short clip, a **3.9x wall-clock
-win** on the 30-minute file, and a much larger win for anything longer or
-batched. The warm-up cost was observed to persist **across separate process
-invocations**, not just within one process — a second, independent
-`python3` run finished in ~28s instead of ~164s, and a third in a
-follow-up process only needed a few seconds. The exact caching mechanism
-wasn't conclusively identified (no on-disk SYCL/Level-Zero kernel cache
-directory was found under `~/.cache` in this WSL2 session, despite the
-speedup persisting across processes — most likely a host-side driver cache,
+steady-state on an isolated repeat of the *same* file — a clear net loss on
+a single short clip, a **3.9x wall-clock win** on the 30-minute file in
+isolation. That warm-up cost was also observed to persist **across separate
+process invocations** in this small-scale test — a second, independent
+`python3` run of the *same* file finished in ~28s instead of ~164s, and a
+third only needed a few seconds. The exact caching mechanism wasn't
+conclusively identified (no on-disk SYCL/Level-Zero kernel cache directory
+was found under `~/.cache` in this WSL2 session, despite the speedup
+persisting across processes — most likely a host-side driver cache,
 analogous to a GPU shader cache, invisible from inside the Linux
-filesystem) but the practical implication holds either way: **it's a
-one-time tax per machine session, not something paid per file or per
-process.** This significantly de-prioritizes the "cache the diarization
-pipeline object across files in a batch" optimization noted earlier — the
-expensive part (kernel compilation) isn't actually re-paid per file once
-the machine has warmed up, even though the Python-level `Pipeline` object
-is still reconstructed fresh each time.
+filesystem).
 
-**Not yet done**: wiring `torch+xpu` into `Dockerfile.intel` (needs the
-`libze1` package added alongside the existing GPU driver packages, plus a
-documented way to get the `+xpu` torch build installed instead of the
-CPU-only pin currently there — these two are mutually exclusive per
-environment, so this would likely want to be a build arg or a separate
-image variant, not unconditional). Also not done: a corresponding real NPU
-timing comparison, or investigating whether `torch+xpu` can also see/use
+**⚠ That small-scale extrapolation did not hold at real full-batch scale —
+correcting it here rather than letting it stand.** Running the actual
+39-file, 6.6-hour real audit dataset with diarization enabled (dual-mic
+pipeline, transcription + diarization together) took **99m55s total**,
+versus **33m56s for the identical batch with transcription only** — so
+diarization added **~66 minutes** across the full dataset. Compared to the
+~165 minutes a CPU-only run would take at CPU's measured ~2.4x-realtime
+rate, that's a real, meaningful **~2.5x speedup**, not the near-60x
+steady-state the 2-file isolated test suggested. Most likely explanation:
+the "warm-up" only avoids recompiling kernels for a *specific tensor
+shape*, and real files vary hugely in length (2.5s to 30 minutes across
+this dataset) — each distinct audio length likely triggers its own
+one-time compile, so the fixed cost gets paid repeatedly across a batch of
+varied-length files rather than just once. **Takeaway: trust the full-batch
+number (~2.5x) for planning, not the same-file-repeated number (~60x) — the
+latter measures a best case that real, varied-length batches don't hit.**
+This also means the "cache the diarization pipeline object across files"
+optimization noted earlier is worth more than the small-scale test implied,
+since a meaningful part of the added time is plausibly Python/model-load
+overhead repeated 39 times, not just GPU kernel compute — not confirmed,
+just a more-plausible-now hypothesis for a future profiling pass.
+
+**Done**: `torch+xpu` is wired into `Dockerfile.intel` via a `TORCH_VARIANT`
+build arg (`libze1` was already installed unconditionally for NPU support,
+so no new system package was needed there), exposed as a separate,
+discoverable `audio2report-intel-xpu` docker-compose service rather than a
+build-arg someone would need to already know about — see README's "Which
+Docker setup do I need?" section. `audio2report hardware` also now reports
+the diarization device (not just the ASR device).
+
+**Not yet done**: a corresponding real NPU timing comparison, or
+investigating whether `torch+xpu` can also see/use
 the NPU (unlikely — NPU access typically goes through a different runtime
 entirely, not Level-Zero-over-dxg).
 

@@ -6,13 +6,16 @@ is using. It supports NVIDIA CUDA, Intel GPU (via PyTorch's native XPU
 backend — a different mechanism than OpenVINO, which the ASR backend uses),
 and CPU.
 
-Real-hardware timing on an Intel Arc iGPU (Framework 13 Pro Series 3):
-XPU has a large one-time warm-up cost (~164s, first-use kernel JIT
-compilation) but then runs at roughly 60x realtime; CPU has no warm-up but
-runs at a consistent ~2.4x realtime. XPU is a net loss for a single short
-clip but a large net win (~4x faster wall-clock, more for longer/batched
-runs) once that warm-up is amortized — see
-docs/INTEL_ACCELERATION_ROADMAP.md for the full writeup.
+Real-hardware timing on an Intel Arc iGPU (Framework 13 Pro Series 3): CPU
+runs at a consistent ~2.4x realtime regardless of file length. XPU has a
+large fixed warm-up cost per distinct audio length (most likely one-time
+kernel JIT compilation per tensor shape) — a net loss on a single short
+clip, but on a real 6.6-hour/39-file batch (varied file lengths, so that
+warm-up cost recurs more than a single-file test would suggest) it was
+still a real ~2.5x wall-clock win over CPU. See
+docs/INTEL_ACCELERATION_ROADMAP.md for the full writeup, including why an
+earlier same-file-repeated benchmark (~60x steady state) overstated the
+real full-batch benefit — trust the full-batch number for planning.
 
 This calls ``pyannote.audio`` directly rather than going through WhisperX's
 ``whisperx.diarize`` wrapper, so diarization works even when only the
