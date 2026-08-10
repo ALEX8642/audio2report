@@ -22,6 +22,12 @@
 #     available under WSL2 as of this writing; GPU-only hosts can omit
 #     this device.
 #
+# Recommended: use docker-compose instead of building this directly — see
+# `docker compose run audio2report-intel ...` / `audio2report-intel-xpu` in
+# docker-compose.yml, and README's "Which Docker setup do I need?" for the
+# full decision tree. The commands below are for building/running this
+# Dockerfile standalone, without compose.
+#
 # Usage (bare-metal Linux):
 #   docker build -f Dockerfile.intel -t audio2report:intel .
 #   docker run --rm --device /dev/dri \
@@ -32,6 +38,10 @@
 #
 #   # With NPU also passed through:
 #   docker run --rm --device /dev/dri --device /dev/accel ... audio2report:intel ...
+#
+#   # With GPU-accelerated diarization (PyTorch XPU) instead of CPU-only —
+#   # this is what docker-compose's audio2report-intel-xpu service does:
+#   docker build -f Dockerfile.intel --build-arg TORCH_VARIANT=xpu -t audio2report:intel-xpu .
 #
 # Usage (WSL2):
 #   docker run --rm --device /dev/dxg -v /usr/lib/wsl:/usr/lib/wsl \
@@ -97,10 +107,17 @@ WORKDIR /app
 COPY pyproject.toml LICENSE .
 COPY audio2report/ ./audio2report/
 
-# This image never has an NVIDIA GPU, so pin CPU-only torch/torchaudio wheels
-# *before* installing the diarize extra — otherwise pip pulls pyannote.audio's
-# default CUDA-enabled torch build (several GB of useless NVIDIA libraries).
-RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+# This image never has an NVIDIA GPU, so pin a non-CUDA torch/torchaudio
+# build *before* installing the diarize extra — otherwise pip pulls
+# pyannote.audio's default CUDA-enabled build (several GB of useless NVIDIA
+# libraries). Default is CPU-only; build with --build-arg TORCH_VARIANT=xpu
+# for GPU-accelerated diarization on the Intel iGPU instead (needs the
+# libze1 package above, already installed unconditionally for NPU support).
+# Real timing data (docs/INTEL_ACCELERATION_ROADMAP.md): xpu has a large
+# one-time warm-up cost, a net loss for a single short clip, a ~4x+
+# wall-clock win for anything longer or batched.
+ARG TORCH_VARIANT=cpu
+RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/${TORCH_VARIANT}
 
 # Install with Intel (OpenVINO) + diarization extras.
 RUN pip install --no-cache-dir ".[intel,diarize]"

@@ -521,6 +521,13 @@ def hardware(
     console.print(table)
     console.print(f"\nAuto mode will use: [bold]{report.recommended}[/bold]")
 
+    # Diarization has its own, independent device (PyTorch cuda/xpu/cpu — a
+    # different mechanism than the OpenVINO-based transcription devices
+    # above, resolved separately since pyannote.audio has no OpenVINO path).
+    from audio2report.transcription._diarize import resolve_diarization_device
+    diar_device = resolve_diarization_device()
+    console.print(f"Diarization (if enabled) will use: [bold]{diar_device}[/bold]")
+
     if config_file is not None:
         cfg = load_config(config_file)
         requested = cfg.transcription.device or "auto"
@@ -536,6 +543,8 @@ def hardware(
             console.print(f"[red]✗ not usable:[/red] {escape(str(exc))}")
             raise typer.Exit(code=1) from exc
         console.print(f"[green]✓ available[/green] — will resolve to device '{resolved}'")
+        if cfg.diarization.enabled:
+            console.print(f"Diarization: [bold]enabled[/bold] — will use device '{diar_device}'")
 
 
 # ---------------------------------------------------------------------------

@@ -6,10 +6,18 @@
 #   OUTPUT_DIR — where outputs are written                       (default: ./output)
 #   HF_TOKEN   — Hugging Face token for diarization (GPU/Intel services only)
 #
+# Which service do I want? See README's "Which Docker setup do I need?"
+# for the full decision tree. Short version:
+#   audio2report-cpu        no dedicated GPU, or unsure
+#   audio2report-gpu        NVIDIA GPU
+#   audio2report-intel      Intel Arc iGPU (transcription accelerated, diarization on CPU)
+#   audio2report-intel-xpu  Intel Arc iGPU (transcription AND diarization accelerated)
+#
 # Examples:
 #   docker compose run audio2report-cpu dual /data/in --out /data/out
 #   docker compose run audio2report-gpu dual /data/in --out /data/out --diarize --config /app/configs/gpu_full.yaml
 #   docker compose run audio2report-intel dual /data/in --out /data/out --config /app/configs/intel_gpu.yaml --diarize
+#   docker compose run audio2report-intel-xpu dual /data/in --out /data/out --config /app/configs/intel_gpu.yaml --diarize
 
 services:
 
@@ -51,8 +59,8 @@ services:
               capabilities: [gpu]
 
   # -----------------------------------------------------------------------
-  # Intel service — Intel Arc iGPU / NPU acceleration via OpenVINO.
-  # Requires Intel GPU/NPU drivers on the host.
+  # Intel service — Intel Arc iGPU / NPU transcription via OpenVINO, with
+  # CPU-only diarization. Requires Intel GPU/NPU drivers on the host.
   #
   # Device path depends on the host:
   #   - Bare-metal Linux: /dev/dri (active below).
@@ -63,6 +71,11 @@ services:
   #     needs an up-to-date Windows-host Intel graphics driver and a recent
   #     (2025+) compute-runtime in the image — see Dockerfile.intel's header
   #     comment.
+  #
+  #   Also want GPU-accelerated diarization? Use audio2report-intel-xpu
+  #   below instead of this service — same image, same device/volume setup,
+  #   just built differently. See README's "Which Docker setup do I need?"
+  #   for the full picture.
   # -----------------------------------------------------------------------
   audio2report-intel:
     build:
@@ -84,6 +97,33 @@ services:
       # a host path that doesn't exist breaks `docker compose up`, so this
       # is commented out by default; uncomment on real NPU hardware.
       # - /dev/accel:/dev/accel
+
+  # -----------------------------------------------------------------------
+  # Intel service, XPU variant — identical to audio2report-intel above,
+  # except diarization also runs on the Intel iGPU (via PyTorch's XPU
+  # backend) instead of CPU. Worth it for anything beyond a single short
+  # clip — real timing data in docs/INTEL_ACCELERATION_ROADMAP.md. Same
+  # device/volume setup as audio2report-intel above (WSL2 notes apply here
+  # too).
+  # -----------------------------------------------------------------------
+  audio2report-intel-xpu:
+    build:
+      context: .
+      dockerfile: Dockerfile.intel
+      args:
+        TORCH_VARIANT: xpu
+    image: audio2report:intel-xpu
+    volumes:
+      - "${INPUT_DIR:-./recordings}:/data/in:ro"
+      - "${OUTPUT_DIR:-./output}:/data/out"
+      - huggingface_cache:/root/.cache/huggingface
+      # - /usr/lib/wsl:/usr/lib/wsl   # WSL2 only — required alongside /dev/dxg below
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+    devices:
+      - /dev/dri:/dev/dri
+      # - /dev/dxg:/dev/dxg   # WSL2 — use this instead of /dev/dri above
+      # - /dev/accel:/dev/accel   # Intel NPU — bare-metal Linux only, see above
 
 volumes:
   huggingface_cache:

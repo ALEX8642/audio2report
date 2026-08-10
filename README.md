@@ -291,6 +291,17 @@ Features:
 
 ## Docker
 
+### Which Docker setup do I need?
+
+| Your hardware | Use this service |
+|---|---|
+| No dedicated GPU, or unsure | `audio2report-cpu` |
+| NVIDIA GPU | `audio2report-gpu` (requires NVIDIA Container Toolkit) |
+| Intel Arc iGPU (e.g. Core Ultra "Series 2/3") — transcription accelerated is enough | `audio2report-intel` |
+| Intel Arc iGPU, and you also want speaker diarization accelerated | `audio2report-intel-xpu` |
+
+All four are defined in `docker-compose.yml` — nothing to configure by hand, just run the matching service. See `docs/INTEL_ACCELERATION_ROADMAP.md` for driver prerequisites and why `audio2report-intel-xpu` exists as a separate service (diarization needs a different acceleration mechanism than transcription, with real measured tradeoffs — a net loss on a single short clip, a large win on anything longer).
+
 ### CPU
 
 ```bash
@@ -310,6 +321,10 @@ docker compose run --rm audio2report-gpu \
 ```bash
 docker compose run --rm audio2report-intel \
   audio2report dual /data/meeting/ --config /app/configs/intel_gpu.yaml --output-dir /data/outputs/
+
+# Or, with diarization also accelerated on the Intel iGPU:
+docker compose run --rm audio2report-intel-xpu \
+  audio2report dual /data/meeting/ --config /app/configs/intel_gpu.yaml --diarize --output-dir /data/outputs/
 ```
 
 Mount your data with `-v /path/to/your/meetings:/data`.
@@ -319,6 +334,8 @@ Mount your data with `-v /path/to/your/meetings:/data`.
 ```bash
 docker build -f Dockerfile.cpu -t audio2report:cpu .
 docker build -f Dockerfile.gpu -t audio2report:gpu .
+docker build -f Dockerfile.intel -t audio2report:intel .
+docker build -f Dockerfile.intel --build-arg TORCH_VARIANT=xpu -t audio2report:intel-xpu .
 ```
 
 ---
