@@ -381,7 +381,7 @@ requires-dist = [
     { name = "openvino", marker = "extra == 'intel'", specifier = ">=2026.1" },
     { name = "openvino-genai", marker = "extra == 'intel'", specifier = ">=2026.1" },
     { name = "openvino-tokenizers", marker = "extra == 'intel'", specifier = ">=2026.1" },
-    { name = "pyannote-audio", marker = "extra == 'diarize'", specifier = ">=3.0" },
+    { name = "pyannote-audio", marker = "extra == 'diarize'", specifier = ">=4.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-cov", marker = "extra == 'dev'" },

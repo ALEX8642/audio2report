@@ -20,7 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 whisperx = ["whisperx"]
-diarize   = ["pyannote.audio>=3.0"]
+diarize   = ["pyannote.audio>=4.0"]
 llm       = ["openai>=1.0", "httpx>=0.25"]
 ui        = ["streamlit>=1.30", "whisperx"]
 # Intel GPU (Arc iGPU)/NPU transcription backend via OpenVINO. Kept out of
