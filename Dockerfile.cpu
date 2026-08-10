@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install Python dependencies before copying source so the layer is cached
-COPY pyproject.toml .
+COPY pyproject.toml LICENSE .
 COPY audio2report/ ./audio2report/
 
 # Install the package with the whisperx extra.

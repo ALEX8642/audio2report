@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY pyproject.toml .
+COPY pyproject.toml LICENSE .
 COPY audio2report/ ./audio2report/
 
 # Install with GPU + diarization extras.
