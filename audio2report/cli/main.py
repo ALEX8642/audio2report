@@ -15,6 +15,7 @@ from pathlib import Path
 import typer
 from dotenv import load_dotenv
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 
 import audio2report
@@ -115,7 +116,7 @@ def _run_report_step(
             stream_to_stdout=cfg.llm.stream,
         )
     except RuntimeError as exc:
-        console.print(f"\n[red]LLM error:[/red] {exc}")
+        console.print(f"\n[red]LLM error:[/red] {escape(str(exc))}")
         return
 
     report_path = out_root / "report.md"
@@ -225,7 +226,7 @@ def dual(
         result = pipeline.run(root.resolve(), out.resolve())
         write_all_outputs(result, out.resolve(), cfg.output)
     except Exception as exc:
-        console.print(f"[red]Error:[/red] {exc}")
+        console.print(f"[red]Error:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
     meta = result.meta
@@ -341,7 +342,7 @@ def single(
         result = pipeline.run(input_path.resolve(), out.resolve(), prime_name=prime_name)
         write_all_outputs(result, out.resolve(), cfg.output)
     except Exception as exc:
-        console.print(f"[red]Error:[/red] {exc}")
+        console.print(f"[red]Error:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
     meta = result.meta
@@ -448,7 +449,7 @@ def report(
     try:
         transcript_text = load_transcript_text(transcript)
     except Exception as exc:
-        console.print(f"[red]Failed to load transcript:[/red] {exc}")
+        console.print(f"[red]Failed to load transcript:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
     if not transcript_text.strip():
@@ -463,7 +464,7 @@ def report(
             stream_to_stdout=cfg.llm.stream,
         )
     except RuntimeError as exc:
-        console.print(f"\n[red]LLM error:[/red] {exc}")
+        console.print(f"\n[red]LLM error:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
     # Save report and prompt
@@ -503,7 +504,6 @@ def hardware(
 
         audio2report hardware --config configs/intel_gpu.yaml
     """
-    from rich.markup import escape
     from rich.table import Table
 
     from audio2report.hardware import detect_hardware
