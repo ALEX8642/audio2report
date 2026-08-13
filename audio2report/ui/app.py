@@ -178,12 +178,35 @@ if __name__ == "__main__":
         mode = st.radio("Pipeline mode", ["dual", "single"], horizontal=True)
 
         st.subheader("Transcription")
-        backend = st.selectbox("Backend", ["whisperx", "openvino"], index=0)
+        backend = st.selectbox(
+            "Backend", ["auto", "whisperx", "openvino", "torch_whisper"], index=0
+        )
+
+        from audio2report.utils import resolve_backend_and_device
+
+        @st.cache_data(ttl=30, show_spinner=False)
+        def _cached_resolve_auto():
+            return resolve_backend_and_device("auto", None)
+
+        if backend == "auto":
+            try:
+                _auto_backend, _auto_device = _cached_resolve_auto()
+                st.caption(f"Auto will use: **{_auto_backend}** on **{_auto_device}**")
+            except RuntimeError as exc:
+                st.error(f"⚠️ {exc}")
+                _auto_backend, _auto_device = "whisperx", "cpu"  # widget fallback only
+            effective_backend = _auto_backend
+        else:
+            effective_backend = backend
+
+        # torch_whisper uses the same short model names as whisperx (both
+        # ultimately load an openai-whisper-compatible checkpoint) — only
+        # openvino's HF-repo-id convention needs a different input.
         whisper_model = st.selectbox(
             "Whisper model",
             ["large-v3", "large-v2", "medium", "small", "base", "tiny"],
             index=0,
-        ) if backend == "whisperx" else st.text_input(
+        ) if effective_backend != "openvino" else st.text_input(
             "OpenVINO model (HF repo id)", value="OpenVINO/whisper-large-v3-int4-ov"
         )
         language = st.text_input("Language (blank = auto-detect)", value="")
@@ -198,9 +221,9 @@ if __name__ == "__main__":
                     f"system — the run will fail at pipeline start. "
                     f"({_selected_info.detail or 'unavailable'})"
                 )
-        if backend == "whisperx" and device in ("gpu", "npu"):
+        if backend in ("whisperx", "torch_whisper") and device in ("gpu", "npu"):
             st.warning(
-                "⚠️ The whisperx backend cannot use Intel GPU/NPU — "
+                f"⚠️ The {backend} backend cannot use Intel GPU/NPU — "
                 "switch Backend to 'openvino' above."
             )
 

@@ -34,6 +34,7 @@ class TestHardwareCommand:
     def test_reports_intel_gpu(self, monkeypatch):
         monkeypatch.setitem(sys.modules, "torch", None)
         monkeypatch.setitem(sys.modules, "openvino", _fake_openvino(["CPU", "GPU"]))
+        monkeypatch.setitem(sys.modules, "openvino_genai", MagicMock())
 
         result = runner.invoke(app, ["hardware"])
 

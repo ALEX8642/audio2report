@@ -73,9 +73,16 @@ def _detect_cuda() -> DeviceInfo:
 
 
 def _detect_openvino_devices() -> tuple[DeviceInfo, DeviceInfo]:
-    """Return (gpu_info, npu_info) via OpenVINO's device enumeration."""
+    """Return (gpu_info, npu_info) via OpenVINO's device enumeration.
+
+    Requires both ``openvino`` (device enumeration) and ``openvino_genai``
+    (what ``OpenVINOTranscriber`` actually imports to run) — a machine with
+    only the former installed can enumerate devices just fine but would
+    still crash the moment the openvino backend tried to load a model.
+    """
     try:
         import openvino
+        import openvino_genai  # noqa: F401
     except ImportError:
         detail = "openvino not installed (pip install 'audio2report[intel]')"
         return (
@@ -125,6 +132,66 @@ def _detect_openvino_devices() -> tuple[DeviceInfo, DeviceInfo]:
         )
 
     return gpu_info, npu_info
+
+
+def openvino_installed() -> bool:
+    """Whether both packages the openvino backend needs are importable —
+    same pairing ``_detect_openvino_devices`` already requires."""
+    try:
+        import openvino  # noqa: F401
+        import openvino_genai  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def whisperx_installed() -> bool:
+    """Whether the whisperx backend's package is installed at all — a
+    separate question from ctranslate2_cuda_capable() below, since a
+    machine commonly has whisperx installed with a CPU-only ctranslate2
+    build (the default case everywhere except a CUDA GPU host)."""
+    try:
+        import whisperx  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def ctranslate2_cuda_capable() -> bool:
+    """Whether the *whisperx* backend can actually use CUDA here.
+
+    Deliberately a different question from "is a CUDA device present"
+    (``_detect_cuda`` above, which only checks PyTorch): whisperx's ASR
+    engine is ctranslate2, a separately-compiled library whose CUDA
+    support is a compile-time property of the installed wheel, not a
+    runtime driver question. Confirmed to diverge in practice — PyPI's
+    ctranslate2 wheels for aarch64 (e.g. NVIDIA DGX Spark) are CPU-only,
+    full stop, even though torch.cuda.is_available() is True there.
+    """
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return False
+    except Exception:
+        return False
+
+    try:
+        import ctranslate2
+        return ctranslate2.get_cuda_device_count() > 0
+    except Exception:
+        return False
+
+
+def torch_whisper_installed() -> bool:
+    """Whether the torch_whisper backend's package (openai-whisper) is
+    installed. Actual CUDA usability is governed by plain torch.cuda —
+    no separate compiled-engine capability question here, unlike
+    ctranslate2 above."""
+    try:
+        import whisper  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def detect_hardware() -> HardwareReport:

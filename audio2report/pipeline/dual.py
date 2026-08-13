@@ -46,7 +46,13 @@ from audio2report.ingestion.normalize import is_audio_too_short_or_silent
 from audio2report.models import AudioFileRecord, RunMeta, RunResult, SegmentRecord
 from audio2report.postprocessing.cleanup import postprocess_segments_for_llm
 from audio2report.transcription.base import get_transcriber
-from audio2report.utils import dump_json, ensure_dir, load_json, pick_device, safe_slug
+from audio2report.utils import (
+    dump_json,
+    ensure_dir,
+    load_json,
+    resolve_backend_and_device,
+    safe_slug,
+)
 
 logger = get_logger(__name__)
 
@@ -83,7 +89,10 @@ class DualMicPipeline:
             )
             return
 
-        device = pick_device(cfg.transcription.device, cfg.transcription.backend)
+        resolved_backend, device = resolve_backend_and_device(
+            cfg.transcription.backend, cfg.transcription.device
+        )
+        cfg.transcription.backend = resolved_backend
 
         table = Table(title="Dry run — files that would be processed", show_lines=True)
         table.add_column("Folder", style="cyan")
@@ -148,7 +157,10 @@ class DualMicPipeline:
                 f"found {len(prime_folders)}: {[p.name for p in prime_folders]}"
             )
 
-        device = pick_device(cfg.transcription.device, cfg.transcription.backend)
+        resolved_backend, device = resolve_backend_and_device(
+            cfg.transcription.backend, cfg.transcription.device
+        )
+        cfg.transcription.backend = resolved_backend
         logger.info(f"Device: [bold]{device}[/bold]")
         logger.info(f"Prime folders: {[p.name for p in prime_folders]}")
 

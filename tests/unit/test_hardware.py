@@ -48,6 +48,23 @@ class TestNothingAvailable:
         assert report.recommended == "cpu"
         assert "not installed" in (report.get("gpu").detail or "")
 
+    def test_openvino_without_openvino_genai_is_unavailable(self, monkeypatch):
+        """Regression: openvino alone can enumerate devices fine, but
+        OpenVINOTranscriber actually needs openvino_genai to run — a
+        machine with only the former must be reported as gpu-unavailable,
+        not as a false positive that crashes the moment a real
+        transcription is attempted."""
+        monkeypatch.setitem(sys.modules, "torch", None)
+        monkeypatch.setitem(
+            sys.modules, "openvino", _fake_openvino(["CPU", "GPU"]),
+        )
+        monkeypatch.setitem(sys.modules, "openvino_genai", None)
+
+        report = detect_hardware()
+
+        assert report.get("gpu").available is False
+        assert "not installed" in (report.get("gpu").detail or "")
+
 
 class TestCuda:
     def test_cuda_available_is_recommended(self, monkeypatch):
@@ -77,6 +94,7 @@ class TestIntelGPU:
             sys.modules, "openvino",
             _fake_openvino(["CPU", "GPU"], {"GPU": "Intel Arc Graphics"}),
         )
+        monkeypatch.setitem(sys.modules, "openvino_genai", MagicMock())
 
         report = detect_hardware()
 
@@ -91,6 +109,7 @@ class TestIntelGPU:
             sys.modules, "openvino",
             _fake_openvino(["CPU", "GPU.0", "GPU.1"]),
         )
+        monkeypatch.setitem(sys.modules, "openvino_genai", MagicMock())
 
         report = detect_hardware()
 
@@ -105,6 +124,7 @@ class TestIntelGPU:
             sys.modules, "openvino",
             _fake_openvino(["CPU", "GPU", "NPU"]),
         )
+        monkeypatch.setitem(sys.modules, "openvino_genai", MagicMock())
 
         report = detect_hardware()
 
@@ -115,6 +135,7 @@ class TestIntelGPU:
     def test_cuda_preferred_over_intel_gpu_in_auto_mode(self, monkeypatch):
         monkeypatch.setitem(sys.modules, "torch", _fake_torch(True))
         monkeypatch.setitem(sys.modules, "openvino", _fake_openvino(["CPU", "GPU"]))
+        monkeypatch.setitem(sys.modules, "openvino_genai", MagicMock())
 
         report = detect_hardware()
 
@@ -128,6 +149,7 @@ class TestIntelNPU:
             sys.modules, "openvino",
             _fake_openvino(["CPU", "NPU"], {"NPU": "Intel AI Boost NPU"}),
         )
+        monkeypatch.setitem(sys.modules, "openvino_genai", MagicMock())
 
         report = detect_hardware()
 
@@ -141,6 +163,7 @@ class TestOpenvinoEnumerationFailure:
     def test_core_construction_raises(self, monkeypatch):
         monkeypatch.setitem(sys.modules, "torch", None)
         monkeypatch.setitem(sys.modules, "openvino", _fake_openvino([], raise_on_core=True))
+        monkeypatch.setitem(sys.modules, "openvino_genai", MagicMock())
 
         report = detect_hardware()
 

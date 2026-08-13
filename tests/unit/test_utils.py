@@ -6,7 +6,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from audio2report.utils import pick_device, validate_backend_device
+from audio2report.hardware import DeviceInfo, HardwareReport
+from audio2report.utils import pick_device, resolve_backend_and_device, validate_backend_device
 
 
 def _fake_openvino(available_devices: list[str]):
@@ -35,6 +36,7 @@ class TestPickDeviceAuto:
     def test_openvino_auto_picks_intel_gpu(self, monkeypatch):
         monkeypatch.setitem(sys.modules, "torch", None)
         monkeypatch.setitem(sys.modules, "openvino", _fake_openvino(["CPU", "GPU"]))
+        monkeypatch.setitem(sys.modules, "openvino_genai", MagicMock())
 
         assert pick_device(None, "openvino") == "gpu"
 
@@ -65,6 +67,7 @@ class TestPickDeviceExplicit:
     def test_explicit_available_device_returned(self, monkeypatch):
         monkeypatch.setitem(sys.modules, "torch", None)
         monkeypatch.setitem(sys.modules, "openvino", _fake_openvino(["CPU", "GPU"]))
+        monkeypatch.setitem(sys.modules, "openvino_genai", MagicMock())
 
         assert pick_device("gpu", "openvino") == "gpu"
         assert pick_device("cpu", "openvino") == "cpu"
@@ -121,3 +124,111 @@ class TestValidateBackendDevice:
     def test_openvino_cuda_rejected(self):
         with pytest.raises(RuntimeError, match="cannot use device"):
             validate_backend_device("openvino", "cuda")
+
+    def test_torch_whisper_cpu_and_cuda_ok(self):
+        validate_backend_device("torch_whisper", "cpu")
+        validate_backend_device("torch_whisper", "cuda")
+
+    def test_torch_whisper_gpu_npu_rejected(self):
+        with pytest.raises(RuntimeError, match="cannot use device"):
+            validate_backend_device("torch_whisper", "gpu")
+        with pytest.raises(RuntimeError, match="cannot use device"):
+            validate_backend_device("torch_whisper", "npu")
+
+
+# ---------------------------------------------------------------------------
+# resolve_backend_and_device — joint auto backend+device selection
+# ---------------------------------------------------------------------------
+
+def _report(*, cuda=False, gpu=False, npu=False) -> HardwareReport:
+    devices = [
+        DeviceInfo(id="cpu", available=True),
+        DeviceInfo(id="cuda", available=cuda),
+        DeviceInfo(id="gpu", available=gpu),
+        DeviceInfo(id="npu", available=npu),
+    ]
+    return HardwareReport(devices=devices, recommended="cpu")
+
+
+def _patch_capabilities(
+    monkeypatch,
+    *,
+    cuda=False,
+    gpu=False,
+    npu=False,
+    ctranslate2_cuda=False,
+    torch_whisper=False,
+    whisperx=False,
+    openvino=False,
+):
+    monkeypatch.setattr(
+        "audio2report.hardware.detect_hardware",
+        lambda: _report(cuda=cuda, gpu=gpu, npu=npu),
+    )
+    monkeypatch.setattr("audio2report.hardware.ctranslate2_cuda_capable", lambda: ctranslate2_cuda)
+    monkeypatch.setattr("audio2report.hardware.torch_whisper_installed", lambda: torch_whisper)
+    monkeypatch.setattr("audio2report.hardware.whisperx_installed", lambda: whisperx)
+    monkeypatch.setattr("audio2report.hardware.openvino_installed", lambda: openvino)
+
+
+class TestResolveBackendAndDevice:
+    def test_prefers_whisperx_cuda_when_ctranslate2_capable(self, monkeypatch):
+        _patch_capabilities(
+            monkeypatch, cuda=True, ctranslate2_cuda=True, whisperx=True, torch_whisper=True
+        )
+        assert resolve_backend_and_device("auto", None) == ("whisperx", "cuda")
+
+    def test_falls_back_to_torch_whisper_cuda_when_ctranslate2_cpu_only(self, monkeypatch):
+        """The DGX Spark case: CUDA is present, whisperx is installed, but
+        ctranslate2 (its ASR engine) has no CUDA wheel — must not pick
+        whisperx+cuda (a guaranteed crash), must land on torch_whisper+cuda
+        instead."""
+        _patch_capabilities(
+            monkeypatch, cuda=True, ctranslate2_cuda=False, whisperx=True, torch_whisper=True
+        )
+        assert resolve_backend_and_device("auto", None) == ("torch_whisper", "cuda")
+
+    def test_falls_back_to_openvino_gpu_when_no_cuda(self, monkeypatch):
+        _patch_capabilities(monkeypatch, gpu=True, whisperx=True, openvino=True)
+        assert resolve_backend_and_device("auto", None) == ("openvino", "gpu")
+
+    def test_falls_back_to_openvino_npu_when_no_cuda_or_gpu(self, monkeypatch):
+        _patch_capabilities(monkeypatch, npu=True, whisperx=True, openvino=True)
+        assert resolve_backend_and_device("auto", None) == ("openvino", "npu")
+
+    def test_cpu_fallback_prefers_whisperx(self, monkeypatch):
+        _patch_capabilities(monkeypatch, whisperx=True, torch_whisper=True, openvino=True)
+        assert resolve_backend_and_device("auto", None) == ("whisperx", "cpu")
+
+    def test_cpu_fallback_prefers_torch_whisper_when_whisperx_missing(self, monkeypatch):
+        _patch_capabilities(monkeypatch, whisperx=False, torch_whisper=True, openvino=True)
+        assert resolve_backend_and_device("auto", None) == ("torch_whisper", "cpu")
+
+    def test_cpu_fallback_uses_openvino_when_only_option(self, monkeypatch):
+        _patch_capabilities(monkeypatch, whisperx=False, torch_whisper=False, openvino=True)
+        assert resolve_backend_and_device("auto", None) == ("openvino", "cpu")
+
+    def test_nothing_installed_raises_clear_error(self, monkeypatch):
+        _patch_capabilities(monkeypatch, whisperx=False, torch_whisper=False, openvino=False)
+        with pytest.raises(RuntimeError, match="No transcription backend is installed"):
+            resolve_backend_and_device("auto", None)
+
+    def test_explicit_backend_never_silently_substituted(self, monkeypatch):
+        """Even when torch_whisper+cuda would be the smarter choice, an
+        explicit whisperx request is returned exactly as asked — never
+        swapped for a different backend. (It can still fail later, deep
+        inside whisperx itself, if ctranslate2 truly can't use the
+        device — that's a real, if less friendly, failure than a
+        silent substitution would be, and out of scope for this
+        explicit-request path, which intentionally only delegates to
+        pick_device's device-presence check, same as before "auto" got
+        smarter.)"""
+        _patch_capabilities(
+            monkeypatch, cuda=True, ctranslate2_cuda=False, whisperx=True, torch_whisper=True
+        )
+        assert resolve_backend_and_device("whisperx", "cuda") == ("whisperx", "cuda")
+
+    def test_explicit_backend_with_genuinely_absent_device_still_raises(self, monkeypatch):
+        _patch_capabilities(monkeypatch, cuda=False, whisperx=True)
+        with pytest.raises(RuntimeError, match="not available"):
+            resolve_backend_and_device("whisperx", "cuda")

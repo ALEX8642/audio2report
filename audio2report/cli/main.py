@@ -22,6 +22,7 @@ import audio2report
 from audio2report._log import set_log_level
 from audio2report.config import Config, load_config
 from audio2report.output.writers import write_all_outputs
+from audio2report.utils import resolve_backend_and_device
 
 load_dotenv()
 
@@ -73,7 +74,16 @@ def _apply_overrides(cfg: Config, **kwargs) -> Config:
             section, field = dest
             data[section][field] = value
 
-    return Config.model_validate(data)
+    cfg = Config.model_validate(data)
+    # Resolve backend+device here (not just inside the pipeline classes)
+    # so the Run-config panel below shows what's actually going to run,
+    # not the literal word "auto".
+    resolved_backend, resolved_device = resolve_backend_and_device(
+        cfg.transcription.backend, cfg.transcription.device
+    )
+    cfg.transcription.backend = resolved_backend
+    cfg.transcription.device = resolved_device
+    return cfg
 
 
 def _apply_verbosity(verbose: bool, quiet: bool) -> None:
@@ -141,7 +151,7 @@ def dual(
     root: Path = typer.Argument(..., help="Root folder containing exactly two 'prime' subfolders."),
     out: Path = typer.Option(Path("audio2report_output"), "--out", "-o", help="Output directory."),
     config_file: Path | None = typer.Option(None, "--config", "-c", help="YAML config file."),
-    backend: str | None = typer.Option(None, "--backend", help="Transcription backend: whisperx | openvino."),
+    backend: str | None = typer.Option(None, "--backend", help="Transcription backend: auto | whisperx | openvino | torch_whisper."),
     model: str | None = typer.Option(None, help="Model name (WhisperX short name, or an HF OpenVINO IR repo id for --backend openvino)."),
     language: str | None = typer.Option(None, help="Force language code (e.g. en). Default: auto-detect."),
     compute_type: str | None = typer.Option(None, help="Compute type: float16 | int8 | float32. (whisperx backend only)"),
@@ -262,7 +272,7 @@ def single(
     out: Path = typer.Option(Path("audio2report_output"), "--out", "-o", help="Output directory."),
     config_file: Path | None = typer.Option(None, "--config", "-c", help="YAML config file."),
     prime_name: str | None = typer.Option(None, "--speaker", help="Speaker name for attribution."),
-    backend: str | None = typer.Option(None, "--backend", help="Transcription backend: whisperx | openvino."),
+    backend: str | None = typer.Option(None, "--backend", help="Transcription backend: auto | whisperx | openvino | torch_whisper."),
     model: str | None = typer.Option(None, help="Model name (WhisperX short name, or an HF OpenVINO IR repo id for --backend openvino)."),
     language: str | None = typer.Option(None, help="Force language code."),
     compute_type: str | None = typer.Option(None, help="Compute type: float16 | int8 | float32. (whisperx backend only)"),

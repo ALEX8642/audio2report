@@ -6,6 +6,7 @@ import pytest
 from audio2report.config import TranscriptionConfig
 from audio2report.transcription.base import get_transcriber, is_effectively_empty
 from audio2report.transcription.openvino_backend import OpenVINOTranscriber
+from audio2report.transcription.torch_whisper_backend import TorchWhisperTranscriber
 from audio2report.transcription.whisperx_backend import WhisperXTranscriber
 
 
@@ -20,6 +21,11 @@ class TestGetTranscriber:
         transcriber = get_transcriber(cfg, "gpu")
         assert isinstance(transcriber, OpenVINOTranscriber)
 
+    def test_torch_whisper_backend_returns_torch_whisper_transcriber(self):
+        cfg = TranscriptionConfig(backend="torch_whisper", device=None)
+        transcriber = get_transcriber(cfg, "cuda")
+        assert isinstance(transcriber, TorchWhisperTranscriber)
+
     def test_whisperx_with_intel_gpu_device_raises(self):
         """The factory must reject an incompatible backend/device combo up
         front rather than let it reach WhisperX and fail obscurely."""
@@ -31,6 +37,11 @@ class TestGetTranscriber:
         cfg = TranscriptionConfig(backend="openvino", device=None)
         with pytest.raises(RuntimeError, match="cannot use device"):
             get_transcriber(cfg, "cuda")
+
+    def test_torch_whisper_with_intel_gpu_device_raises(self):
+        cfg = TranscriptionConfig(backend="torch_whisper", device=None)
+        with pytest.raises(RuntimeError, match="cannot use device"):
+            get_transcriber(cfg, "gpu")
 
 
 class TestIsEffectivelyEmpty:

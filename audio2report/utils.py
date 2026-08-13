@@ -107,6 +107,7 @@ _VALID_DEVICES = {"cpu", "cuda", "gpu", "npu"}
 _BACKEND_DEVICES = {
     "whisperx": {"cpu", "cuda"},
     "openvino": {"cpu", "gpu", "npu"},
+    "torch_whisper": {"cpu", "cuda"},
 }
 
 
@@ -164,6 +165,73 @@ def pick_device(device_arg: str | None, backend: str = "whisperx") -> str:
     raise RuntimeError(
         f"Requested device '{device_arg}' is not available{reason}. "
         f"Detected: {detected}. Run 'audio2report hardware' for details."
+    )
+
+
+def resolve_backend_and_device(backend_pref: str, device_pref: str | None) -> tuple[str, str]:
+    """
+    Resolve *both* backend and device together for ``backend_pref="auto"``,
+    instead of ``pick_device``'s backend-fixed device-only resolution.
+
+    Why this needs to exist separately from ``pick_device``: device
+    *presence* (is a CUDA GPU physically there) and backend *capability*
+    (can this specific installed package actually use it) are different
+    questions that can diverge — confirmed on real hardware, where
+    ctranslate2 (whisperx's ASR engine) ships no CUDA wheel for aarch64 at
+    all, so ``torch.cuda.is_available()`` being True there does not mean
+    whisperx can use it. Picking "whisperx" + "cuda" by device-presence
+    alone would crash; this picks the first backend+device combination
+    that's both present *and* capability-confirmed.
+
+    An explicit (non-``"auto"``) backend is never silently substituted —
+    matches ``pick_device``'s own philosophy for explicit devices: a
+    request that can't be honored must fail loudly, not fall back to a
+    different backend than the one asked for.
+    """
+    if backend_pref != "auto":
+        return backend_pref, pick_device(device_pref, backend_pref)
+
+    from audio2report.hardware import (
+        ctranslate2_cuda_capable,
+        detect_hardware,
+        openvino_installed,
+        torch_whisper_installed,
+        whisperx_installed,
+    )
+
+    report = detect_hardware()
+
+    def _present(device_id: str) -> bool:
+        info = report.get(device_id)
+        return info is not None and info.available
+
+    cuda_present = _present("cuda")
+    gpu_present = _present("gpu")
+    npu_present = _present("npu")
+
+    if cuda_present and ctranslate2_cuda_capable():
+        return "whisperx", "cuda"
+    if cuda_present and torch_whisper_installed():
+        return "torch_whisper", "cuda"
+    if gpu_present:
+        return "openvino", "gpu"
+    if npu_present:
+        return "openvino", "npu"
+
+    # Nothing GPU/NPU-accelerated available (or usable) — CPU fallback,
+    # preferring whichever backend is actually installed.
+    if whisperx_installed():
+        return "whisperx", "cpu"
+    if torch_whisper_installed():
+        return "torch_whisper", "cpu"
+    if openvino_installed():
+        return "openvino", "cpu"
+
+    raise RuntimeError(
+        "No transcription backend is installed. Run one of: "
+        "pip install 'audio2report[whisperx]', "
+        "pip install 'audio2report[torch_whisper]', "
+        "pip install 'audio2report[intel]'."
     )
 
 

@@ -34,18 +34,22 @@
 # the package. This is a ctranslate2 upstream gap, not something fixable
 # by pinning a different version or index here — building it from source
 # with CUDA enabled is the only way around it, and wasn't in scope for
-# this pass. Diarization is unaffected: pyannote.audio runs on plain
-# PyTorch, not ctranslate2, so it does use the GPU. Practical result on
-# DGX Spark today: run transcription on --device cpu (verified working
-# end-to-end); GPU acceleration is real for diarization, not for ASR.
+# this pass.
 #
-# Usage (--device cpu for transcription per the ctranslate2 note above;
-# --diarize still runs on the GPU):
+# The fix: this image also installs the torch_whisper extra (plain
+# PyTorch Whisper, no ctranslate2 involved) — audio2report's hardware
+# auto-selection (backend="auto", the default) detects that whisperx's
+# CUDA path is unusable here and picks torch_whisper+cuda instead,
+# automatically, with zero flags needed. Diarization was never affected
+# by any of this either way: pyannote.audio runs on plain PyTorch, not
+# ctranslate2, so it always used the GPU here.
+#
+# Usage — no --backend/--device flags needed, auto-selection handles it:
 #   docker build -f Dockerfile.dgx -t audio2report:dgx .
 #   docker run --rm --gpus all \
 #       -v ./recordings:/data/in:ro -v ./output:/data/out \
 #       -e HF_TOKEN=$HF_TOKEN \
-#       audio2report:dgx dual /data/in --out /data/out --device cpu --diarize
+#       audio2report:dgx dual /data/in --out /data/out --diarize
 
 FROM nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04
 
@@ -102,7 +106,7 @@ COPY pyproject.toml LICENSE .
 COPY audio2report/ ./audio2report/
 COPY configs/ ./configs/
 
-RUN pip install --no-cache-dir ".[whisperx,diarize]"
+RUN pip install --no-cache-dir ".[whisperx,diarize,torch_whisper]"
 
 # whisperx's torch~=2.8.0 pin has no CUDA-13 match (see header comment) —
 # pip installed a CPU-only torch to satisfy it. Force back to a CUDA

@@ -46,13 +46,16 @@ def is_effectively_empty(result: dict[str, Any]) -> bool:
 
 def get_transcriber(config: TranscriptionConfig, device: str) -> AbstractTranscriber:
     """Construct the transcriber for *config.backend*, resolved against *device*."""
-    # Raises for any backend other than "whisperx"/"openvino", so the if/else
-    # below only ever has to distinguish between those two known-valid cases.
+    # Raises for any backend not in _BACKEND_DEVICES, so the if/elif/else
+    # below only ever has to distinguish between known-valid backends.
     validate_backend_device(config.backend, device)
 
     if config.backend == "whisperx":
         from audio2report.transcription.whisperx_backend import WhisperXTranscriber
         return WhisperXTranscriber(config, device)
+    elif config.backend == "torch_whisper":
+        from audio2report.transcription.torch_whisper_backend import TorchWhisperTranscriber
+        return TorchWhisperTranscriber(config, device)
     else:
         from audio2report.transcription.openvino_backend import OpenVINOTranscriber
         return OpenVINOTranscriber(config, device)

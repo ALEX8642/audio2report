@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
-_VALID_BACKENDS = {"whisperx", "openvino"}
+_VALID_BACKENDS = {"auto", "whisperx", "openvino", "torch_whisper"}
 _VALID_DEVICES = {"auto", "cpu", "cuda", "gpu", "npu"}
 
 
@@ -17,7 +17,9 @@ class AudioConfig(BaseModel):
 
 
 class TranscriptionConfig(BaseModel):
-    backend: str = "whisperx"          # whisperx (CUDA/CPU) | openvino (CPU/Intel GPU/Intel NPU)
+    # "auto" resolves to whichever installed backend can actually use the
+    # best available hardware — see utils.resolve_backend_and_device.
+    backend: str = "auto"              # auto | whisperx (CUDA/CPU) | openvino (CPU/Intel GPU/Intel NPU) | torch_whisper (CUDA/CPU)
     model: str = "large-v3"            # whisperx: short model name; openvino: HF repo id of an OpenVINO IR model
     language: str | None = None
     compute_type: str = "float16"      # whisperx-only; ignored by the openvino backend

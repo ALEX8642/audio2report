@@ -28,6 +28,11 @@ ui        = ["streamlit>=1.30", "whisperx"]
 # expectations that are irrelevant (and wasteful to install) on non-Intel
 # machines — install explicitly with `pip install "audio2report[intel]"`.
 intel     = ["openvino>=2026.1", "openvino-genai>=2026.1", "openvino-tokenizers>=2026.1", "huggingface_hub>=0.24"]
+# Plain-PyTorch Whisper backend — for hardware where ctranslate2 (the
+# whisperx backend's ASR engine) has no CUDA wheel at all, e.g. NVIDIA
+# DGX Spark (aarch64). Kept out of `full` for the same reason as
+# `intel`: a fallback for a specific hardware gap, not a default need.
+torch_whisper = ["openai-whisper"]
 full      = ["audio2report[whisperx,diarize,llm,ui]"]
 # torch is here (not pulled in via whisperx/diarize) because
 # tests/unit/test_diarize.py mocks pyannote.audio and soundfile but
