@@ -10,17 +10,16 @@
 # So this needs both a different base image architecture AND a different
 # CUDA major version — two independent reasons, not one.
 #
-# Known open risks (unverified against real hardware as of writing —
-# smoke-test before trusting this in production):
-#   - Official PyTorch cu130 wheels are only officially validated up to
-#     sm_120; DGX Spark is sm_121. Community reports say it runs with a
-#     compatibility warning rather than failing outright, but confirm
-#     this on real hardware.
-#   - whisperx's native-compiled dependency chain (faster-whisper ->
-#     ctranslate2) has a history of lagging on new-architecture CUDA
-#     wheel availability — confirm `pip install ".[whisperx,diarize]"`
-#     actually resolves working aarch64+CUDA13 wheels for everything it
-#     pulls in, not just for plain torch.
+# Built on real DGX Spark hardware (spark0, GB10, driver 580.159.03,
+# CUDA 13.0). One real bug found in the process — see the
+# --extra-index-url comment below; without it, this image silently ends
+# up CPU-only despite the explicit torch install.
+#
+# Still-open risk, not yet hit but not ruled out either: official
+# PyTorch cu130 wheels are only officially validated up to sm_120; DGX
+# Spark is sm_121. Community reports say it runs with a compatibility
+# warning rather than failing outright — watch for that warning on a
+# real transcription run, not just at import time.
 #
 # Usage:
 #   docker build -f Dockerfile.dgx -t audio2report:dgx .
@@ -55,11 +54,19 @@ COPY configs/ ./configs/
 
 # Install the aarch64+CUDA13 PyTorch build explicitly, before whisperx/
 # pyannote pull in torch themselves — same ordering trick as
-# Dockerfile.intel's TORCH_VARIANT install, so pip sees it already
-# satisfied and doesn't reinstall a mismatched default build.
+# Dockerfile.intel's TORCH_VARIANT install. Unlike that image, ordering
+# alone isn't enough here: whisperx's own dependency chain constrains
+# torch to an older version than cu130's latest, so pip's resolver
+# *downgrades* torch during the second install regardless of what's
+# already present — confirmed on real DGX Spark hardware, where this
+# silently landed on a CPU-only build from the default PyPI index
+# because only the first install pointed at the CUDA index. Passing
+# --extra-index-url on the second install too means that downgrade still
+# resolves a CUDA build instead of falling back to a CPU one.
 RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cu130
 
-RUN pip install --no-cache-dir ".[whisperx,diarize]"
+RUN pip install --no-cache-dir ".[whisperx,diarize]" \
+    --extra-index-url https://download.pytorch.org/whl/cu130
 
 ENV HF_HOME=/root/.cache/huggingface
 VOLUME ["/root/.cache/huggingface", "/data/in", "/data/out"]
