@@ -106,6 +106,7 @@ WORKDIR /app
 
 COPY pyproject.toml LICENSE .
 COPY audio2report/ ./audio2report/
+COPY configs/ ./configs/
 
 # This image never has an NVIDIA GPU, so pin a non-CUDA torch/torchaudio
 # build *before* installing the diarize extra — otherwise pip pulls

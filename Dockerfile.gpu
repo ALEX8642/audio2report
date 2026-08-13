@@ -30,6 +30,7 @@ WORKDIR /app
 
 COPY pyproject.toml LICENSE .
 COPY audio2report/ ./audio2report/
+COPY configs/ ./configs/
 
 # Install with GPU + diarization extras.
 # torch (CUDA) pulled in by whisperx; pyannote.audio for diarization.
