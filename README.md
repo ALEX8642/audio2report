@@ -301,7 +301,7 @@ Features:
 | Intel Arc iGPU, and you also want speaker diarization accelerated | `audio2report-intel-xpu` |
 | NVIDIA DGX Spark (GB10 / Grace Blackwell, ARM64) | `audio2report-dgx` |
 
-All five are defined in `docker-compose.yml` — nothing to configure by hand, just run the matching service. See `docs/INTEL_ACCELERATION_ROADMAP.md` for Intel driver prerequisites and why `audio2report-intel-xpu` exists as a separate service (diarization needs a different acceleration mechanism than transcription, with real measured tradeoffs — a net loss on a single short clip, a large win on anything longer). `audio2report-dgx` is its own image rather than a variant of `audio2report-gpu` because DGX Spark is genuinely ARM64 hardware requiring CUDA 13+ (Blackwell support) — see `Dockerfile.dgx`'s header comment for the full reasoning, including known open compatibility caveats not yet verified against real hardware.
+All five are defined in `docker-compose.yml` — nothing to configure by hand, just run the matching service. See `docs/INTEL_ACCELERATION_ROADMAP.md` for Intel driver prerequisites and why `audio2report-intel-xpu` exists as a separate service (diarization needs a different acceleration mechanism than transcription, with real measured tradeoffs — a net loss on a single short clip, a large win on anything longer). `audio2report-dgx` is its own image rather than a variant of `audio2report-gpu` because DGX Spark is genuinely ARM64 hardware requiring CUDA 13+ (Blackwell support) — see `Dockerfile.dgx`'s header comment for the full build reasoning. Built and verified on real DGX Spark hardware: diarization runs on the GPU, but transcription needs `--device cpu` — ctranslate2 (the whisperx backend's ASR engine) currently has no CUDA wheel for aarch64 on PyPI at all, a real upstream gap rather than a config issue.
 
 ### CPU
 
@@ -332,8 +332,10 @@ docker compose run --rm audio2report-intel-xpu \
 
 ```bash
 docker compose run --rm audio2report-dgx \
-  audio2report dual /data/meeting/ --diarize --output-dir /data/outputs/
+  audio2report dual /data/meeting/ --device cpu --diarize --output-dir /data/outputs/
 ```
+
+`--device cpu` is for transcription specifically — diarization (`--diarize`) still runs on the GPU regardless. See `Dockerfile.dgx`'s header comment for why.
 
 Mount your data with `-v /path/to/your/meetings:/data`.
 

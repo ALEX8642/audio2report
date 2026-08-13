@@ -11,22 +11,41 @@
 # CUDA major version — two independent reasons, not one.
 #
 # Built on real DGX Spark hardware (spark0, GB10, driver 580.159.03,
-# CUDA 13.0). One real bug found in the process — see the
-# --extra-index-url comment below; without it, this image silently ends
-# up CPU-only despite the explicit torch install.
+# CUDA 13.0). Confirmed the hard way: whisperx 3.8.6 (latest as of
+# writing) pins torch~=2.8.0 / torchaudio~=2.8.0 / torchvision~=0.23.0,
+# but PyPI's cu130 index only publishes torch>=2.9.0 for aarch64 —
+# there is no CUDA-13 build satisfying whisperx's own pin at all, on
+# any architecture. Installing whisperx normally silently downgrades to
+# a CPU-only torch 2.8.0 from the default index. See the --no-deps
+# force-reinstall step below for the fix, and re-check this whenever
+# whisperx cuts a new release — the pin may loosen.
 #
-# Still-open risk, not yet hit but not ruled out either: official
-# PyTorch cu130 wheels are only officially validated up to sm_120; DGX
-# Spark is sm_121. Community reports say it runs with a compatibility
-# warning rather than failing outright — watch for that warning on a
-# real transcription run, not just at import time.
+# sm_121 (Blackwell) risk: resolved. torch 2.13.0+cu130 ran a real CUDA
+# matmul on the actual GB10 with no compatibility warning at all —
+# device name and compute capability (12, 1) both correctly detected.
 #
-# Usage:
+# Real, currently-unfixable-via-Dockerfile limitation confirmed on this
+# hardware: the "whisperx" backend cannot use the GPU for transcription
+# here. faster-whisper (whisperx's ASR engine) runs on ctranslate2, and
+# ctranslate2's official PyPI releases publish CPU-only wheels for
+# aarch64 Linux — no CUDA variant exists to install at all, confirmed via
+# `ctranslate2.get_cuda_device_count()` returning 0 on a package compiled
+# without CUDA support, and by checking PyPI's actual file listing for
+# the package. This is a ctranslate2 upstream gap, not something fixable
+# by pinning a different version or index here — building it from source
+# with CUDA enabled is the only way around it, and wasn't in scope for
+# this pass. Diarization is unaffected: pyannote.audio runs on plain
+# PyTorch, not ctranslate2, so it does use the GPU. Practical result on
+# DGX Spark today: run transcription on --device cpu (verified working
+# end-to-end); GPU acceleration is real for diarization, not for ASR.
+#
+# Usage (--device cpu for transcription per the ctranslate2 note above;
+# --diarize still runs on the GPU):
 #   docker build -f Dockerfile.dgx -t audio2report:dgx .
 #   docker run --rm --gpus all \
 #       -v ./recordings:/data/in:ro -v ./output:/data/out \
 #       -e HF_TOKEN=$HF_TOKEN \
-#       audio2report:dgx dual /data/in --out /data/out --diarize
+#       audio2report:dgx dual /data/in --out /data/out --device cpu --diarize
 
 FROM nvidia/cuda:13.0.0-cudnn-runtime-ubuntu24.04
 
@@ -37,14 +56,45 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_BREAK_SYSTEM_PACKAGES=1
 
 # Ubuntu 24.04 ships Python 3.12 natively — no versioned package needed.
+# cuda-cupti-13-0 / libcusparselt0-cuda-13 / libnvshmem3-cuda-13: the
+# "cudnn-runtime" base image only includes core CUDA runtime libs, but
+# newer torch builds unconditionally import several more optional CUDA
+# components at startup (profiling, structured-sparsity, multi-GPU
+# shared memory) that this single-GPU pipeline never actually uses.
+# Without them, `import torch` fails outright with a missing .so error
+# — all three confirmed missing on real hardware, one rebuild at a time.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 \
         python3-dev \
         python3-pip \
         ffmpeg \
         git \
+        cuda-cupti-13-0 \
+        libcusparselt0-cuda-13 \
+        libnvshmem3-cuda-13 \
+    && apt-get install -y --only-upgrade --allow-change-held-packages libnccl2 \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3 /usr/bin/python
+# The base image's bundled libnccl2 (2.27.7) predates a symbol
+# (ncclCommResume) this torch/cu130 build expects — `import torch` fails
+# with "undefined symbol" rather than a missing-file error, since some
+# NCCL version genuinely is present, just too old. --only-upgrade pulls
+# whatever newer libnccl2 the repo currently has for this CUDA major
+# version rather than hand-pinning an exact version that will inevitably
+# go stale; the base image apt-holds libnccl2 (deliberately, to prevent
+# version drift breaking CUDA guarantees), hence the explicit override.
+
+# Both libcusparselt0-cuda-13 and libnvshmem3-cuda-13 genuinely install
+# their .so files (confirmed via `dpkg -L`), but NVIDIA ships each under
+# its own versioned side-by-side subdirectory, outside the dynamic
+# linker's default search path — ldconfig never finds either there
+# without an explicit ld.so.conf.d entry, so `import torch` still fails
+# to load them even though the files are genuinely present on disk.
+RUN printf '%s\n' \
+        /usr/lib/aarch64-linux-gnu/libcusparseLt/13 \
+        /usr/lib/aarch64-linux-gnu/nvshmem/13 \
+        > /etc/ld.so.conf.d/cuda-extra.conf \
+    && ldconfig
 
 WORKDIR /app
 
@@ -52,21 +102,18 @@ COPY pyproject.toml LICENSE .
 COPY audio2report/ ./audio2report/
 COPY configs/ ./configs/
 
-# Install the aarch64+CUDA13 PyTorch build explicitly, before whisperx/
-# pyannote pull in torch themselves — same ordering trick as
-# Dockerfile.intel's TORCH_VARIANT install. Unlike that image, ordering
-# alone isn't enough here: whisperx's own dependency chain constrains
-# torch to an older version than cu130's latest, so pip's resolver
-# *downgrades* torch during the second install regardless of what's
-# already present — confirmed on real DGX Spark hardware, where this
-# silently landed on a CPU-only build from the default PyPI index
-# because only the first install pointed at the CUDA index. Passing
-# --extra-index-url on the second install too means that downgrade still
-# resolves a CUDA build instead of falling back to a CPU one.
-RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cu130
+RUN pip install --no-cache-dir ".[whisperx,diarize]"
 
-RUN pip install --no-cache-dir ".[whisperx,diarize]" \
-    --extra-index-url https://download.pytorch.org/whl/cu130
+# whisperx's torch~=2.8.0 pin has no CUDA-13 match (see header comment) —
+# pip installed a CPU-only torch to satisfy it. Force back to a CUDA
+# build now. --no-deps so pip doesn't immediately re-trigger the same
+# downgrade to "satisfy" whisperx's declared pin; --force-reinstall so
+# it actually overwrites the CPU build already on disk. Unpinned
+# (latest on cu130) rather than hand-picked, so pip resolves a mutually
+# compatible torch/torchaudio/torchvision trio itself instead of us
+# guessing at PyTorch's version-pairing table.
+RUN pip install --no-cache-dir --no-deps --force-reinstall \
+    torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu130
 
 ENV HF_HOME=/root/.cache/huggingface
 VOLUME ["/root/.cache/huggingface", "/data/in", "/data/out"]
