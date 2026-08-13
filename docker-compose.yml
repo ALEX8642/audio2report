@@ -117,12 +117,12 @@ services:
       - "${INPUT_DIR:-./recordings}:/data/in:ro"
       - "${OUTPUT_DIR:-./output}:/data/out"
       - huggingface_cache:/root/.cache/huggingface
-      # - /usr/lib/wsl:/usr/lib/wsl   # WSL2 only — required alongside /dev/dxg below
+      - /usr/lib/wsl:/usr/lib/wsl   # WSL2 only — required alongside /dev/dxg below
     environment:
       - HF_TOKEN=${HF_TOKEN:-}
     devices:
-      - /dev/dri:/dev/dri
-      # - /dev/dxg:/dev/dxg   # WSL2 — use this instead of /dev/dri above
+      # - /dev/dri:/dev/dri
+      - /dev/dxg:/dev/dxg   # WSL2 — use this instead of /dev/dri above
       # - /dev/accel:/dev/accel   # Intel NPU — bare-metal Linux only, see above
 
 volumes:
