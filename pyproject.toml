@@ -29,7 +29,11 @@ ui        = ["streamlit>=1.30", "whisperx"]
 # machines — install explicitly with `pip install "audio2report[intel]"`.
 intel     = ["openvino>=2026.1", "openvino-genai>=2026.1", "openvino-tokenizers>=2026.1", "huggingface_hub>=0.24"]
 full      = ["audio2report[whisperx,diarize,llm,ui]"]
-dev       = ["pytest>=7.0", "pytest-cov", "ruff", "mypy"]
+# torch is here (not pulled in via whisperx/diarize) because
+# tests/unit/test_diarize.py mocks pyannote.audio and soundfile but
+# expects genuine torch to be importable — real torch is cheap/CPU-only
+# on CI runners, mocking it too would test far less of the real code.
+dev       = ["pytest>=7.0", "pytest-cov", "ruff", "mypy", "torch"]
 
 [project.scripts]
 audio2report = "audio2report.cli.main:app"
