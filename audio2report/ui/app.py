@@ -6,39 +6,62 @@ Launch with:
 """
 from __future__ import annotations
 
-import atexit
+import hashlib
+import io
+import queue
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
+import zipfile
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Temp-directory lifecycle
+#
+# Streamlit reruns this whole script in a fresh namespace on every
+# interaction, so plain module-level tracking (e.g. a set + atexit hook)
+# only ever "remembers" whatever the *most recent* rerun created — anything
+# from earlier clicks, earlier sessions, or a killed/crashed process is
+# unreachable and leaks. Instead of trying to track and clean up on exit,
+# every run dirs go under one dedicated folder, and each new session sweeps
+# it for anything stale before doing its own work — self-healing regardless
+# of how the previous process ended (clean exit, SIGKILL, crash, refresh).
 # ---------------------------------------------------------------------------
 
-_TRACKED_TEMP_DIRS: set[str] = set()
+_TEMP_ROOT = Path(tempfile.gettempdir()) / "audio2report_ui"
+_STALE_AFTER_SECONDS = 30 * 60
 
 
-def _cleanup_tracked_dirs() -> None:
-    for d in list(_TRACKED_TEMP_DIRS):
-        shutil.rmtree(d, ignore_errors=True)
-    _TRACKED_TEMP_DIRS.clear()
-
-
-atexit.register(_cleanup_tracked_dirs)
-
-
-def _make_temp_dir(prefix: str) -> str:
-    d = tempfile.mkdtemp(prefix=prefix)
-    _TRACKED_TEMP_DIRS.add(d)
-    return d
+def _sweep_stale_temp_dirs() -> None:
+    if not _TEMP_ROOT.is_dir():
+        return
+    cutoff = time.time() - _STALE_AFTER_SECONDS
+    for entry in _TEMP_ROOT.iterdir():
+        try:
+            if entry.stat().st_mtime < cutoff:
+                shutil.rmtree(entry, ignore_errors=True)
+        except FileNotFoundError:
+            pass  # removed concurrently, nothing to do
 
 
 def _rm_temp_dir(path: str | None) -> None:
     if path:
-        _TRACKED_TEMP_DIRS.discard(path)
         shutil.rmtree(path, ignore_errors=True)
+
+
+def _files_signature(files) -> str:
+    """Content hash of a set of uploaded files — identical uploads always
+    map to the same output dir, so the per-file transcription cache
+    (out_root/per_file_whisperx_json/) can actually be reused across
+    reruns instead of starting from an empty dir every click."""
+    h = hashlib.sha256()
+    for f in sorted(files, key=lambda uf: uf.name):
+        h.update(f.name.encode())
+        h.update(f.getvalue())
+    return h.hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------
@@ -101,12 +124,25 @@ if __name__ == "__main__":
             "output_files": {},       # {filename: bytes} — populated after each run
             "_tmp_input_dir": None,
             "_tmp_output_dir": None,
+            "_run_active": False,     # a subprocess is currently running, being polled
+            "_run_kind": None,        # "dry_run" | "run" — which button started it
+            "_run_cancelled": False,  # distinguishes a Cancel click from a pipeline error
+            "_proc": None,
+            "_reader_thread": None,
+            "_log_queue": None,
+            "_progress_file": None,
         }
         for key, val in defaults.items():
             if key not in st.session_state:
                 st.session_state[key] = val
 
     _init_state()
+
+    # Once per session (not once per rerun): sweep leftovers from any
+    # previous process that never got to clean up after itself.
+    if not st.session_state.get("_swept_stale_temp_dirs"):
+        _sweep_stale_temp_dirs()
+        st.session_state["_swept_stale_temp_dirs"] = True
 
     # ── Sidebar — configuration ───────────────────────────────────────────────
 
@@ -268,11 +304,23 @@ if __name__ == "__main__":
                 files[name] = p.read_bytes()
         st.session_state["output_files"] = files
 
-    def _stream_subprocess(cmd: list[str], log_area) -> int:
-        """Run *cmd*, streaming stdout/stderr into a Streamlit code block."""
-        st.session_state["log_lines"] = []
-        log_text = log_area.code("Starting…", language=None)
+    def _reader_thread_fn(proc: subprocess.Popen, q: "queue.Queue") -> None:
+        """Background thread: pushes subprocess output lines into a
+        thread-safe queue. Never touches st.session_state directly — only
+        the main script thread does that, by draining the queue on each
+        rerun. This is what makes the run non-blocking: without it,
+        reading proc.stdout in the main script thread would freeze the
+        whole Streamlit app (including a Cancel button) for the run's
+        full duration."""
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            q.put(line.rstrip())
+        q.put(None)  # sentinel: stdout closed
 
+    def _start_subprocess(cmd: list[str], progress_file: Path, run_kind: str) -> None:
+        """Launch *cmd* as a non-blocking background subprocess and stash
+        everything needed to poll it in session_state."""
+        st.session_state["log_lines"] = []
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -280,18 +328,39 @@ if __name__ == "__main__":
             text=True,
             bufsize=1,
         )
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            st.session_state["log_lines"].append(line.rstrip())
-            visible = "\n".join(st.session_state["log_lines"][-200:])
-            log_text.code(visible, language=None)
+        q: queue.Queue = queue.Queue()
+        thread = threading.Thread(target=_reader_thread_fn, args=(proc, q), daemon=True)
+        thread.start()
+        st.session_state["_proc"] = proc
+        st.session_state["_reader_thread"] = thread
+        st.session_state["_log_queue"] = q
+        st.session_state["_progress_file"] = progress_file
+        st.session_state["_run_kind"] = run_kind
+        st.session_state["_run_active"] = True
+        st.session_state["_run_cancelled"] = False
 
+    def _drain_log_queue(log_area) -> None:
+        q = st.session_state["_log_queue"]
+        while True:
+            try:
+                line = q.get_nowait()
+            except queue.Empty:
+                break
+            if line is not None:
+                st.session_state["log_lines"].append(line)
+        if st.session_state["log_lines"]:
+            log_area.code("\n".join(st.session_state["log_lines"][-200:]), language=None)
+
+    def _read_progress() -> dict | None:
+        """Last event written by the CLI's --progress-file sink, if any."""
+        pf = st.session_state.get("_progress_file")
+        if not pf or not pf.exists():
+            return None
         try:
-            proc.wait(timeout=3600)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            st.error("Pipeline timed out after 60 minutes.")
-        return proc.returncode
+            lines = pf.read_text(encoding="utf-8").strip().splitlines()
+            return json.loads(lines[-1]) if lines else None
+        except (json.JSONDecodeError, OSError):
+            return None  # caught it mid-write; try again next poll
 
     # ── Main tabs ─────────────────────────────────────────────────────────────
 
@@ -337,72 +406,145 @@ if __name__ == "__main__":
             uploaded_a = uploaded_b = []
             files_ready = bool(uploaded_single)
 
+        run_active = st.session_state["_run_active"]
+
+        if not files_ready:
+            st.caption(
+                "Upload at least one WAV file for each channel to enable Dry Run / Run."
+                if mode == "dual"
+                else "Upload at least one WAV file to enable Dry Run / Run."
+            )
+
         dry_col, run_col, _ = st.columns([1, 1, 4])
-        dry_run_clicked = dry_col.button("🔍 Dry Run", use_container_width=True)
-        run_clicked = run_col.button("▶ Run", type="primary", use_container_width=True)
+        dry_run_clicked = dry_col.button(
+            "🔍 Dry Run", use_container_width=True, disabled=not files_ready or run_active
+        )
+        run_clicked = run_col.button(
+            "▶ Run", type="primary", use_container_width=True, disabled=not files_ready or run_active
+        )
 
         log_area = st.empty()
+        progress_area = st.empty()
 
-        if dry_run_clicked or run_clicked:
-            if not files_ready:
-                if mode == "dual":
-                    st.error("Upload at least one WAV file for each channel.")
+        if run_active:
+            _drain_log_queue(log_area)
+            event = _read_progress()
+            if event and event.get("total"):
+                fraction = event["completed"] / event["total"]
+                if event["completed"] > 0:
+                    remaining_sec = event["elapsed_sec"] * (event["total"] - event["completed"]) / event["completed"]
+                    eta_text = f" • ETA {remaining_sec:.0f}s"
                 else:
-                    st.error("Upload at least one WAV file.")
+                    eta_text = ""
+                progress_area.progress(
+                    fraction, text=f"{event['completed']}/{event['total']} files{eta_text}"
+                )
+
+            proc = st.session_state["_proc"]
+            poll = proc.poll()
+
+            if poll is None:
+                if st.button("⏹ Cancel"):
+                    proc.terminate()
+                    for _ in range(10):  # up to ~5s grace period
+                        if proc.poll() is not None:
+                            break
+                        time.sleep(0.5)
+                    if proc.poll() is None:
+                        proc.kill()
+                    st.session_state["_run_cancelled"] = True
+                    st.rerun()
+                else:
+                    time.sleep(1)
+                    st.rerun()
             else:
-                # Clean up temp dirs from previous run
-                _rm_temp_dir(st.session_state.get("_tmp_input_dir"))
-                _rm_temp_dir(st.session_state.get("_tmp_output_dir"))
-                st.session_state["output_files"] = {}
+                st.session_state["_run_active"] = False
+                rc = poll
+                run_kind = st.session_state["_run_kind"]
+                cancelled = st.session_state["_run_cancelled"]
+                tmp_output = st.session_state["_tmp_output_dir"]
 
-                tmp_input = _make_temp_dir("a2r_in_")
-                tmp_output = _make_temp_dir("a2r_out_")
-                st.session_state["_tmp_input_dir"] = tmp_input
-                st.session_state["_tmp_output_dir"] = tmp_output
-
-                if mode == "dual":
-                    dir_a = Path(tmp_input) / "channel_a"
-                    dir_b = Path(tmp_input) / "channel_b"
-                    dir_a.mkdir()
-                    dir_b.mkdir()
-                    for f in uploaded_a:
-                        (dir_a / f.name).write_bytes(f.getvalue())
-                    for f in uploaded_b:
-                        (dir_b / f.name).write_bytes(f.getvalue())
-                    input_path = tmp_input
-                else:
-                    for f in uploaded_single:
-                        (Path(tmp_input) / f.name).write_bytes(f.getvalue())
-                    input_path = tmp_input
-
-                with tempfile.TemporaryDirectory() as cfg_tmp:
-                    cfg_path = _build_inline_config(Path(cfg_tmp))
-                    cmd = [
-                        sys.executable, "-m", "audio2report.cli.main",
-                        mode, input_path,
-                        "--out", tmp_output,
-                        "--config", str(cfg_path),
-                    ]
-                    if dry_run_clicked:
-                        cmd.append("--dry-run")
-                    if run_clicked and llm_enabled:
-                        cmd += [
-                            "--report",
-                            "--llm-provider", llm_provider,
-                            "--llm-model", llm_model,
-                            "--llm-base-url", llm_base_url,
-                        ]
-
-                    with st.spinner("Running…"):
-                        rc = _stream_subprocess(cmd, log_area)
-
-                if run_clicked:
+                if cancelled:
+                    st.warning("Run cancelled.")
+                elif run_kind == "run":
                     if rc == 0:
                         st.success("Pipeline completed successfully.")
                         st.session_state["pipeline_done"] = True
                         _load_outputs(tmp_output)
                     else:
                         st.error(f"Pipeline exited with code {rc}. Check the log above.")
+                elif rc != 0:
+                    st.error(f"Dry run exited with code {rc}. Check the log above.")
+
+        elif dry_run_clicked or run_clicked:
+            content_key = _files_signature(
+                list(uploaded_a) + list(uploaded_b) if mode == "dual" else list(uploaded_single)
+            )
+            tmp_input = str(_TEMP_ROOT / f"a2r_in_{content_key}")
+            tmp_output = str(_TEMP_ROOT / f"a2r_out_{content_key}")
+
+            # Input is always rewritten fresh — cheap, and guarantees it
+            # matches exactly what's currently uploaded.
+            _rm_temp_dir(tmp_input)
+            Path(tmp_input).mkdir(parents=True)
+
+            # Output is only wiped when caching is off. Otherwise this is
+            # the *same* path as any previous run of this exact upload
+            # (path is content-addressed), so out_root/per_file_whisperx_json/
+            # from an earlier click is still there and the pipeline's own
+            # "if cfg.cache and json_path.exists()" check can actually hit —
+            # e.g. Dry Run then Run, or Run again after only toggling
+            # diarization/report options, skips re-transcribing.
+            if not cache:
+                _rm_temp_dir(tmp_output)
+            Path(tmp_output).mkdir(parents=True, exist_ok=True)
+
+            st.session_state["_tmp_input_dir"] = tmp_input
+            st.session_state["_tmp_output_dir"] = tmp_output
+            st.session_state["output_files"] = {}
+
+            if mode == "dual":
+                dir_a = Path(tmp_input) / "channel_a prime"
+                dir_b = Path(tmp_input) / "channel_b prime"
+                dir_a.mkdir()
+                dir_b.mkdir()
+                for f in uploaded_a:
+                    (dir_a / f.name).write_bytes(f.getvalue())
+                for f in uploaded_b:
+                    (dir_b / f.name).write_bytes(f.getvalue())
+                input_path = tmp_input
+            else:
+                for f in uploaded_single:
+                    (Path(tmp_input) / f.name).write_bytes(f.getvalue())
+                input_path = tmp_input
+
+            # Not a context manager: this needs to outlive the current
+            # script rerun, since the subprocess now runs in the
+            # background and reads the config file well after this
+            # function returns. Reclaimed later by the same 30-minute
+            # stale-dir sweep as everything else under _TEMP_ROOT.
+            cfg_tmp = Path(tempfile.mkdtemp(dir=str(_TEMP_ROOT), prefix="a2r_cfg_"))
+            cfg_path = _build_inline_config(cfg_tmp)
+            progress_file = Path(tmp_output) / "progress.jsonl"
+            cmd = [
+                sys.executable, "-m", "audio2report.cli.main",
+                mode, input_path,
+                "--out", tmp_output,
+                "--config", str(cfg_path),
+                "--progress-file", str(progress_file),
+            ]
+            if dry_run_clicked:
+                cmd.append("--dry-run")
+            if run_clicked and llm_enabled:
+                cmd += [
+                    "--report",
+                    "--llm-provider", llm_provider,
+                    "--llm-model", llm_model,
+                    "--llm-base-url", llm_base_url,
+                ]
+
+            _start_subprocess(cmd, progress_file, run_kind="run" if run_clicked else "dry_run")
+            st.rerun()
 
         elif st.session_state["log_lines"]:
             log_area.code(
@@ -410,6 +552,10 @@ if __name__ == "__main__":
             )
 
         # ── Downloads ─────────────────────────────────────────────────────────
+        # st.download_button triggers a full script rerun on every click (like
+        # any Streamlit widget) — with one button per output file, downloading
+        # several in a row meant repeatedly watching the page dim and recover.
+        # A single zip means at most one rerun instead of up to seven.
         output_files = st.session_state.get("output_files") or {}
         if output_files:
             st.divider()
@@ -420,18 +566,31 @@ if __name__ == "__main__":
                 "txt": "text/plain",
                 "md": "text/markdown",
             }
-            cols = st.columns(4)
-            col_idx = 0
-            for fname, data in output_files.items():
-                ext = fname.rsplit(".", 1)[-1]
-                cols[col_idx % 4].download_button(
-                    f"⬇ {fname}",
-                    data=data,
-                    file_name=fname,
-                    mime=_MIME.get(ext, "application/octet-stream"),
-                    use_container_width=True,
-                )
-                col_idx += 1
+
+            zip_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for fname, data in output_files.items():
+                    zf.writestr(fname, data)
+            st.download_button(
+                "⬇ Download all outputs (.zip)",
+                data=zip_buf.getvalue(),
+                file_name="audio2report_output.zip",
+                mime="application/zip",
+                type="primary",
+            )
+
+            with st.expander("Download individual files instead"):
+                cols = st.columns(4)
+                for col_idx, (fname, data) in enumerate(output_files.items()):
+                    ext = fname.rsplit(".", 1)[-1]
+                    cols[col_idx % 4].download_button(
+                        f"⬇ {fname}",
+                        data=data,
+                        file_name=fname,
+                        mime=_MIME.get(ext, "application/octet-stream"),
+                        use_container_width=True,
+                        key=f"dl_{fname}",
+                    )
 
             with st.expander("What are these files?"):
                 st.markdown(

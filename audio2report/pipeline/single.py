@@ -7,16 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    TimeElapsedColumn,
-)
-
-from audio2report._log import get_console, get_logger
+from audio2report._log import get_logger
+from audio2report._progress import ProgressReporter
 from audio2report.alignment.timeline import result_to_segments
 from audio2report.config import Config
 from audio2report.deduplication.scoring import assign_speaker_for_kept_segment, retention_score
@@ -35,18 +27,6 @@ from audio2report.utils import dump_json, ensure_dir, load_json, pick_device, sa
 logger = get_logger(__name__)
 
 
-def _make_progress() -> Progress:
-    return Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        console=get_console(),
-        transient=True,
-    )
-
-
 class SingleMicPipeline:
     """
     Transcribes a single audio file or a folder of sequential audio files.
@@ -60,7 +40,13 @@ class SingleMicPipeline:
     def __init__(self, config: Config) -> None:
         self.config = config
 
-    def run(self, input_path: Path, out_root: Path, prime_name: str | None = None) -> RunResult:
+    def run(
+        self,
+        input_path: Path,
+        out_root: Path,
+        prime_name: str | None = None,
+        progress_file: Path | None = None,
+    ) -> RunResult:
         """
         Parameters
         ----------
@@ -71,6 +57,9 @@ class SingleMicPipeline:
         prime_name:
             Speaker name to use in attribution labels.  Defaults to the folder
             name (or file stem for single-file inputs).
+        progress_file:
+            If given, receives one newline-delimited JSON progress event per
+            completed file — for non-interactive consumers (e.g. the UI).
         """
         cfg = self.config
 
@@ -117,13 +106,11 @@ class SingleMicPipeline:
         json_dir = raw_json_root / safe_slug(resolved_prime)
         ensure_dir(json_dir)
 
-        with _make_progress() as progress:
-            task = progress.add_task("Transcribing", total=len(file_recs))
-
+        with ProgressReporter(len(file_recs), progress_file=progress_file) as progress:
             for fr in file_recs:
                 stem = Path(fr.normalized_wav).stem
                 json_path = json_dir / f"{stem}.json"
-                progress.update(task, description=f"[cyan]{resolved_prime}[/cyan]  {stem}")
+                progress.start_item(f"[cyan]{resolved_prime}[/cyan]  {stem}")
 
                 if cfg.cache and json_path.exists():
                     logger.info(f"Cache hit: {json_path.name}")
@@ -138,7 +125,7 @@ class SingleMicPipeline:
                             "skipped_reason": "short_audio_precheck",
                         }
                         dump_json(json_path, result)
-                        progress.advance(task)
+                        progress.advance()
                         continue
 
                     result = transcriber.transcribe(
@@ -148,7 +135,7 @@ class SingleMicPipeline:
                     )
                     dump_json(json_path, result)
 
-                progress.advance(task)
+                progress.advance()
 
                 if result.get("skipped_reason"):
                     logger.info(f"Skipping post-ASR: {stem} ({result['skipped_reason']})")

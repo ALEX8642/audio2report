@@ -25,16 +25,8 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    TimeElapsedColumn,
-)
-
 from audio2report._log import get_console, get_logger
+from audio2report._progress import ProgressReporter
 from audio2report.alignment.anchors import collect_alignment_anchors, robust_median_offset
 from audio2report.alignment.timeline import apply_offset_to_channel, result_to_segments
 from audio2report.config import Config
@@ -57,18 +49,6 @@ from audio2report.transcription.base import get_transcriber
 from audio2report.utils import dump_json, ensure_dir, load_json, pick_device, safe_slug
 
 logger = get_logger(__name__)
-
-
-def _make_progress() -> Progress:
-    return Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        console=get_console(),
-        transient=True,
-    )
 
 
 class DualMicPipeline:
@@ -140,12 +120,16 @@ class DualMicPipeline:
     # Main pipeline
     # ------------------------------------------------------------------
 
-    def run(self, root: Path, out_root: Path) -> RunResult:
+    def run(self, root: Path, out_root: Path, progress_file: Path | None = None) -> RunResult:
         """
         Run the pipeline on *root* and return a :class:`~audio2report.models.RunResult`.
 
         The caller is responsible for writing outputs (see
         :func:`~audio2report.output.writers.write_all_outputs`).
+
+        *progress_file*, if given, receives one newline-delimited JSON
+        progress event per completed file — for non-interactive consumers
+        (e.g. the UI) that can't rely on the terminal-rendered Rich bar.
         """
         cfg = self.config
 
@@ -189,9 +173,7 @@ class DualMicPipeline:
         all_segments: list[SegmentRecord] = []
         total_files = sum(len(recs) for recs in folder_records.values())
 
-        with _make_progress() as progress:
-            task = progress.add_task("Transcribing", total=total_files)
-
+        with ProgressReporter(total_files, progress_file=progress_file) as progress:
             for folder_name, file_recs in folder_records.items():
                 folder_json_dir = raw_json_root / safe_slug(folder_name)
                 ensure_dir(folder_json_dir)
@@ -199,7 +181,7 @@ class DualMicPipeline:
                 for fr in file_recs:
                     stem = Path(fr.normalized_wav).stem
                     json_path = folder_json_dir / f"{stem}.json"
-                    progress.update(task, description=f"[cyan]{folder_name}[/cyan]  {stem}")
+                    progress.start_item(f"[cyan]{folder_name}[/cyan]  {stem}")
 
                     # Cache hit: skip re-transcription
                     if cfg.cache and json_path.exists():
@@ -215,7 +197,7 @@ class DualMicPipeline:
                                 "skipped_reason": "short_audio_precheck",
                             }
                             dump_json(json_path, result)
-                            progress.advance(task)
+                            progress.advance()
                             continue
 
                         result = transcriber.transcribe(
@@ -225,7 +207,7 @@ class DualMicPipeline:
                         )
                         dump_json(json_path, result)
 
-                    progress.advance(task)
+                    progress.advance()
 
                     if result.get("skipped_reason"):
                         logger.info(

@@ -7,12 +7,27 @@ interleaving artefacts.
 from __future__ import annotations
 
 import logging
+import warnings
 
 from rich.console import Console
 from rich.logging import RichHandler
 
 # One console shared by every module that needs rich output
 _console = Console(stderr=False)
+
+# Known-benign third-party warnings that alarm users for no reason — an
+# allow-list of specific messages, not a blanket ignore-everything, so a
+# genuinely new warning still surfaces. audio2report never uses pyannote's
+# path-based audio loader (see transcription/_diarize.py's own comment on
+# why), so the torchcodec warning it emits at import time is moot; the
+# pooling std() warning is expected floating-point behavior on some
+# tensor shapes, not a sign anything is wrong.
+warnings.filterwarnings(
+    "ignore", message=r"(?s)\s*torchcodec is not installed correctly.*", category=UserWarning
+)
+warnings.filterwarnings(
+    "ignore", message=r"(?s)\s*std\(\): degrees of freedom is <= 0.*", category=UserWarning
+)
 
 
 def get_console() -> Console:

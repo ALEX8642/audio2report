@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -79,9 +80,14 @@ def make_json_safe(obj: Any) -> Any:
 
 
 def dump_json(path: Path, obj: Any) -> None:
+    """Write JSON atomically: a process killed mid-write (e.g. a cancelled
+    UI run) leaves either the old file or the fully-written new one, never
+    a truncated file that would crash a later cache-hit read."""
     safe_obj = make_json_safe(obj)
-    with path.open("w", encoding="utf-8") as f:
+    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
         json.dump(safe_obj, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, path)
 
 
 def load_json(path: Path) -> Any:

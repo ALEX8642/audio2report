@@ -125,6 +125,32 @@ services:
       - /dev/dxg:/dev/dxg   # WSL2 — use this instead of /dev/dri above
       # - /dev/accel:/dev/accel   # Intel NPU — bare-metal Linux only, see above
 
+  # -----------------------------------------------------------------------
+  # DGX Spark service — NVIDIA GB10 (Grace Blackwell) ARM64 hardware.
+  # Not a variant of audio2report-gpu: different CPU architecture (ARM64
+  # vs x86-64) and a newer required CUDA major version (13.0 vs 12.1) —
+  # see Dockerfile.dgx's header for the full reasoning. Requires the
+  # NVIDIA Container Toolkit on the host, same as audio2report-gpu.
+  # -----------------------------------------------------------------------
+  audio2report-dgx:
+    build:
+      context: .
+      dockerfile: Dockerfile.dgx
+    image: audio2report:dgx
+    volumes:
+      - "${INPUT_DIR:-./recordings}:/data/in:ro"
+      - "${OUTPUT_DIR:-./output}:/data/out"
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
 volumes:
   huggingface_cache:
     # Named volume keeps model weights between runs — avoids re-downloading

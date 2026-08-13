@@ -156,6 +156,9 @@ def dual(
     llm_model: str | None = typer.Option(None, "--llm-model", help="LLM model name."),
     llm_base_url: str | None = typer.Option(None, "--llm-base-url", help="LLM API base URL."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be processed without running."),
+    progress_file: Path | None = typer.Option(
+        None, "--progress-file", help="Write newline-delimited JSON progress events to this file."
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help=_VERBOSE_HELP),
     quiet: bool = typer.Option(False, "--quiet", "-q", help=_QUIET_HELP),
 ) -> None:
@@ -223,7 +226,7 @@ def dual(
         return
 
     try:
-        result = pipeline.run(root.resolve(), out.resolve())
+        result = pipeline.run(root.resolve(), out.resolve(), progress_file=progress_file)
         write_all_outputs(result, out.resolve(), cfg.output)
     except Exception as exc:
         console.print(f"[red]Error:[/red] {escape(str(exc))}")
@@ -274,6 +277,9 @@ def single(
     llm_model: str | None = typer.Option(None, "--llm-model"),
     llm_base_url: str | None = typer.Option(None, "--llm-base-url"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be processed without running."),
+    progress_file: Path | None = typer.Option(
+        None, "--progress-file", help="Write newline-delimited JSON progress events to this file."
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help=_VERBOSE_HELP),
     quiet: bool = typer.Option(False, "--quiet", "-q", help=_QUIET_HELP),
 ) -> None:
@@ -339,7 +345,9 @@ def single(
 
     try:
         pipeline = SingleMicPipeline(cfg)
-        result = pipeline.run(input_path.resolve(), out.resolve(), prime_name=prime_name)
+        result = pipeline.run(
+            input_path.resolve(), out.resolve(), prime_name=prime_name, progress_file=progress_file
+        )
         write_all_outputs(result, out.resolve(), cfg.output)
     except Exception as exc:
         console.print(f"[red]Error:[/red] {escape(str(exc))}")

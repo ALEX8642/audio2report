@@ -299,8 +299,9 @@ Features:
 | NVIDIA GPU | `audio2report-gpu` (requires NVIDIA Container Toolkit) |
 | Intel Arc iGPU (e.g. Core Ultra "Series 2/3") — transcription accelerated is enough | `audio2report-intel` |
 | Intel Arc iGPU, and you also want speaker diarization accelerated | `audio2report-intel-xpu` |
+| NVIDIA DGX Spark (GB10 / Grace Blackwell, ARM64) | `audio2report-dgx` |
 
-All four are defined in `docker-compose.yml` — nothing to configure by hand, just run the matching service. See `docs/INTEL_ACCELERATION_ROADMAP.md` for driver prerequisites and why `audio2report-intel-xpu` exists as a separate service (diarization needs a different acceleration mechanism than transcription, with real measured tradeoffs — a net loss on a single short clip, a large win on anything longer).
+All five are defined in `docker-compose.yml` — nothing to configure by hand, just run the matching service. See `docs/INTEL_ACCELERATION_ROADMAP.md` for Intel driver prerequisites and why `audio2report-intel-xpu` exists as a separate service (diarization needs a different acceleration mechanism than transcription, with real measured tradeoffs — a net loss on a single short clip, a large win on anything longer). `audio2report-dgx` is its own image rather than a variant of `audio2report-gpu` because DGX Spark is genuinely ARM64 hardware requiring CUDA 13+ (Blackwell support) — see `Dockerfile.dgx`'s header comment for the full reasoning, including known open compatibility caveats not yet verified against real hardware.
 
 ### CPU
 
@@ -327,6 +328,13 @@ docker compose run --rm audio2report-intel-xpu \
   audio2report dual /data/meeting/ --config /app/configs/intel_gpu.yaml --diarize --output-dir /data/outputs/
 ```
 
+### NVIDIA DGX Spark (GB10 / Grace Blackwell, ARM64)
+
+```bash
+docker compose run --rm audio2report-dgx \
+  audio2report dual /data/meeting/ --diarize --output-dir /data/outputs/
+```
+
 Mount your data with `-v /path/to/your/meetings:/data`.
 
 ### Build from scratch
@@ -336,6 +344,7 @@ docker build -f Dockerfile.cpu -t audio2report:cpu .
 docker build -f Dockerfile.gpu -t audio2report:gpu .
 docker build -f Dockerfile.intel -t audio2report:intel .
 docker build -f Dockerfile.intel --build-arg TORCH_VARIANT=xpu -t audio2report:intel-xpu .
+docker build -f Dockerfile.dgx -t audio2report:dgx .
 ```
 
 ---
