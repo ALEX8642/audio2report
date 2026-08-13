@@ -138,6 +138,13 @@ def dual_workspace(tmp_path, monkeypatch):
     # Run ingestion to discover the exact normalized WAV paths, then use
     # those paths to determine the correct cache JSON locations.
     cfg = Config()
+    # Explicit, not "auto" (the default): this fixture never calls a real
+    # transcriber at all (every file is a cache hit, see module docstring)
+    # so which backend is nominally selected doesn't matter here — but
+    # "auto" would require some real transcription package to actually be
+    # installed just to resolve, which isn't guaranteed in a minimal test
+    # environment.
+    cfg.transcription.backend = "whisperx"
     normalized_root = out_dir / "normalized_audio"
     raw_json_root   = out_dir / "per_file_whisperx_json"
     ensure_dir(normalized_root)

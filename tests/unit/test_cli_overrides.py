@@ -70,10 +70,18 @@ class TestDualCliEndToEndPreservesConfigFileDiarize:
         (tmp_path / "channel b prime").mkdir()
         return tmp_path
 
+    # backend: whisperx is set explicitly in every config below — these
+    # tests are about diarize-flag override merging, not backend
+    # selection, and dry_run() now resolves backend="auto" (the default)
+    # via resolve_backend_and_device(), which requires some real
+    # transcription package to be installed just to resolve. Pinning an
+    # explicit backend here sidesteps that, matching how these tests
+    # never actually needed a real transcriber before either.
+
     def test_dry_run_without_diarize_flag_keeps_config_file_true(self, tmp_path):
         root = self._make_prime_folders(tmp_path)
         config_path = tmp_path / "cfg.yaml"
-        config_path.write_text("diarization:\n  enabled: true\n")
+        config_path.write_text("transcription:\n  backend: whisperx\ndiarization:\n  enabled: true\n")
 
         result = runner.invoke(app, ["dual", str(root), "--config", str(config_path), "--dry-run"])
 
@@ -83,7 +91,7 @@ class TestDualCliEndToEndPreservesConfigFileDiarize:
     def test_dry_run_without_diarize_flag_keeps_config_file_false(self, tmp_path):
         root = self._make_prime_folders(tmp_path)
         config_path = tmp_path / "cfg.yaml"
-        config_path.write_text("diarization:\n  enabled: false\n")
+        config_path.write_text("transcription:\n  backend: whisperx\ndiarization:\n  enabled: false\n")
 
         result = runner.invoke(app, ["dual", str(root), "--config", str(config_path), "--dry-run"])
 
@@ -93,7 +101,7 @@ class TestDualCliEndToEndPreservesConfigFileDiarize:
     def test_dry_run_explicit_diarize_flag_overrides_config_file(self, tmp_path):
         root = self._make_prime_folders(tmp_path)
         config_path = tmp_path / "cfg.yaml"
-        config_path.write_text("diarization:\n  enabled: false\n")
+        config_path.write_text("transcription:\n  backend: whisperx\ndiarization:\n  enabled: false\n")
 
         result = runner.invoke(
             app, ["dual", str(root), "--config", str(config_path), "--diarize", "--dry-run"]

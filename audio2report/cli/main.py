@@ -22,7 +22,6 @@ import audio2report
 from audio2report._log import set_log_level
 from audio2report.config import Config, load_config
 from audio2report.output.writers import write_all_outputs
-from audio2report.utils import resolve_backend_and_device
 
 load_dotenv()
 
@@ -74,16 +73,7 @@ def _apply_overrides(cfg: Config, **kwargs) -> Config:
             section, field = dest
             data[section][field] = value
 
-    cfg = Config.model_validate(data)
-    # Resolve backend+device here (not just inside the pipeline classes)
-    # so the Run-config panel below shows what's actually going to run,
-    # not the literal word "auto".
-    resolved_backend, resolved_device = resolve_backend_and_device(
-        cfg.transcription.backend, cfg.transcription.device
-    )
-    cfg.transcription.backend = resolved_backend
-    cfg.transcription.device = resolved_device
-    return cfg
+    return Config.model_validate(data)
 
 
 def _apply_verbosity(verbose: bool, quiet: bool) -> None:
