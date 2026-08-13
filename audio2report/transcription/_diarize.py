@@ -85,6 +85,11 @@ def run_diarization(
         )
 
     pipeline = Pipeline.from_pretrained(_DEFAULT_DIARIZATION_MODEL, token=hf_token)
+    if pipeline is None:
+        raise RuntimeError(
+            f"Failed to load diarization model {_DEFAULT_DIARIZATION_MODEL!r} — "
+            "check the Hugging Face token has access to this gated model."
+        )
     pipeline.to(torch.device(device))
 
     # Preload the waveform ourselves rather than passing a path — pyannote's

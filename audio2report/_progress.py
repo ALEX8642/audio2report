@@ -60,7 +60,7 @@ class ProgressReporter:
         self._started = 0.0
         self._task_id: Any = None
 
-    def __enter__(self) -> "ProgressReporter":
+    def __enter__(self) -> ProgressReporter:
         self._rich.__enter__()
         self._task_id = self._rich.add_task("Transcribing", total=self._total)
         self._started = time.monotonic()

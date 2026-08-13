@@ -104,11 +104,11 @@ def _detect_openvino_devices() -> tuple[DeviceInfo, DeviceInfo]:
 
     if gpu_devices:
         primary = gpu_devices[0]
-        detail = None
+        gpu_detail = None
         if len(gpu_devices) > 1:
-            detail = f"multiple Intel GPUs detected ({', '.join(gpu_devices)}); using {primary}"
+            gpu_detail = f"multiple Intel GPUs detected ({', '.join(gpu_devices)}); using {primary}"
         gpu_info = DeviceInfo(
-            id="gpu", available=True, name=_full_name(primary), backend="openvino", detail=detail
+            id="gpu", available=True, name=_full_name(primary), backend="openvino", detail=gpu_detail
         )
     else:
         gpu_info = DeviceInfo(

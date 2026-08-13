@@ -304,7 +304,7 @@ if __name__ == "__main__":
                 files[name] = p.read_bytes()
         st.session_state["output_files"] = files
 
-    def _reader_thread_fn(proc: subprocess.Popen, q: "queue.Queue") -> None:
+    def _reader_thread_fn(proc: subprocess.Popen, q: queue.Queue) -> None:
         """Background thread: pushes subprocess output lines into a
         thread-safe queue. Never touches st.session_state directly — only
         the main script thread does that, by draining the queue on each
@@ -446,7 +446,7 @@ if __name__ == "__main__":
             if poll is None:
                 if st.button("⏹ Cancel"):
                     proc.terminate()
-                    for _ in range(10):  # up to ~5s grace period
+                    for _attempt in range(10):  # up to ~5s grace period
                         if proc.poll() is not None:
                             break
                         time.sleep(0.5)
