@@ -48,11 +48,16 @@ def _rm_temp_dir(path: str | None) -> None:
 def main() -> None:
     """Launch Streamlit with this file as the app."""
     app_path = Path(__file__).resolve()
+    extra_args = sys.argv[1:]
+    # Streamlit's 200MB default upload cap is too small for hour-long
+    # dual-mic recordings; raise it unless the user already set one.
+    if not any(a.startswith("--server.maxUploadSize") for a in extra_args):
+        extra_args = ["--server.maxUploadSize", "2048"] + extra_args
     sys.exit(
         subprocess.call(
             [sys.executable, "-m", "streamlit", "run", str(app_path),
              "--server.headless", "false"]
-            + sys.argv[1:]
+            + extra_args
         )
     )
 
