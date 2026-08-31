@@ -199,16 +199,6 @@ if __name__ == "__main__":
         else:
             effective_backend = backend
 
-        # torch_whisper uses the same short model names as whisperx (both
-        # ultimately load an openai-whisper-compatible checkpoint) — only
-        # openvino's HF-repo-id convention needs a different input.
-        whisper_model = st.selectbox(
-            "Whisper model",
-            ["large-v3", "large-v2", "medium", "small", "base", "tiny"],
-            index=0,
-        ) if effective_backend != "openvino" else st.text_input(
-            "OpenVINO model (HF repo id)", value="OpenVINO/whisper-large-v3-int4-ov"
-        )
         language = st.text_input("Language (blank = auto-detect)", value="")
         device = st.selectbox("Device", ["auto", "cpu", "cuda", "gpu", "npu"], index=0)
         compute_type = st.selectbox("Compute type", ["auto", "float16", "int8"], index=0)
@@ -227,11 +217,52 @@ if __name__ == "__main__":
                 "switch Backend to 'openvino' above."
             )
 
+        @st.cache_data(ttl=30, show_spinner=False)
+        def _cached_pick_device(backend_: str) -> str:
+            from audio2report.utils import pick_device
+            return pick_device(None, backend_)
+
+        if device == "auto":
+            try:
+                effective_device = _auto_device if backend == "auto" else _cached_pick_device(effective_backend)
+            except RuntimeError:
+                effective_device = "cpu"  # widget fallback only
+        else:
+            effective_device = device
+
+        # torch_whisper uses the same short model names as whisperx (both
+        # ultimately load an openai-whisper-compatible checkpoint) — only
+        # openvino's HF-repo-id convention needs a different input.
+        whisper_model = st.selectbox(
+            "Whisper model",
+            ["auto", "large-v3", "large-v2", "medium", "small", "base", "tiny"],
+            index=0,
+        ) if effective_backend != "openvino" else st.text_input(
+            "OpenVINO model (HF repo id, or 'auto')", value="auto"
+        )
+
+        if whisper_model == "auto":
+            from audio2report.utils import resolve_model
+
+            @st.cache_data(ttl=30, show_spinner=False)
+            def _cached_resolve_model(backend_: str, device_: str) -> str:
+                return resolve_model("auto", backend_, device_)
+
+            st.caption(f"Auto will use: **{_cached_resolve_model(effective_backend, effective_device)}**")
+
         st.subheader("Diarization")
-        diarize = st.checkbox("Enable speaker diarization", value=False)
+        diarize = st.checkbox("Enable speaker diarization", value=True)
         hf_token = ""
         if diarize:
             hf_token = st.text_input("HuggingFace token", type="password")
+            import os as _os
+
+            if not hf_token and not _os.environ.get("HF_TOKEN"):
+                st.warning(
+                    "⚠️ No Hugging Face token found (field is blank and "
+                    "HF_TOKEN is not set) — diarization will be skipped "
+                    "automatically at run time."
+                )
 
         st.subheader("Output")
         cache = st.checkbox("Use transcription cache", value=True)
