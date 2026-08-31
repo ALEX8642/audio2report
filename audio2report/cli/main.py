@@ -319,17 +319,8 @@ def single(
         cfg = cfg.model_copy(update={"llm": LLMConfig.model_validate(llm_data)})
 
     if dry_run:
-        from rich.table import Table
-        table = Table(title=f"Dry run — {input_path}", show_lines=True)
-        table.add_column("File")
-        table.add_column("Status", style="yellow")
-        if input_path.is_dir():
-            from audio2report.ingestion.discovery import list_audio_files
-            for f in list_audio_files(input_path):
-                table.add_row(f.name, "will transcribe")
-        else:
-            table.add_row(input_path.name, "will transcribe")
-        console.print(table)
+        pipeline = SingleMicPipeline(cfg)
+        pipeline.dry_run(input_path.resolve(), out.resolve(), prime_name=prime_name)
         return
 
     if not quiet:

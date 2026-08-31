@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from audio2report._log import get_logger
+from audio2report._log import get_console, get_logger
 from audio2report._progress import ProgressReporter
 from audio2report.alignment.timeline import result_to_segments
 from audio2report.config import Config
@@ -46,6 +46,75 @@ class SingleMicPipeline:
 
     def __init__(self, config: Config) -> None:
         self.config = config
+
+    # ------------------------------------------------------------------
+    # Dry-run: report what would happen without touching any audio
+    # ------------------------------------------------------------------
+
+    def dry_run(
+        self,
+        input_path: Path,
+        out_root: Path,
+        prime_name: str | None = None,
+    ) -> None:
+        """Print a summary of what ``run()`` would do, then return."""
+        from rich.table import Table
+
+        cfg = self.config
+        console = get_console()
+
+        if not input_path.exists():
+            console.print(f"[red]Input path does not exist:[/red] {input_path}")
+            return
+
+        resolved_backend, device = resolve_backend_and_device(
+            cfg.transcription.backend, cfg.transcription.device
+        )
+        cfg.transcription.backend = resolved_backend
+        cfg.transcription.model = resolve_model(cfg.transcription.model, resolved_backend, device)
+
+        raw_json_root = out_root / "per_file_whisperx_json"
+
+        table = Table(title=f"Dry run — {input_path}", show_lines=True)
+        table.add_column("File")
+        table.add_column("Status", style="yellow")
+
+        if input_path.is_dir():
+            from audio2report.ingestion.discovery import list_audio_files
+
+            resolved_prime = prime_name or parse_prime_from_folder(input_path.name)
+            json_dir = raw_json_root / safe_slug(resolved_prime)
+            for i, src in enumerate(list_audio_files(input_path)):
+                dst_stem = f"{i:04d}_{safe_slug(src.stem)}"
+                json_path = json_dir / f"{dst_stem}.json"
+                status = (
+                    "[green]cached[/green]"
+                    if cfg.cache and json_path.exists()
+                    else "[yellow]will transcribe[/yellow]"
+                )
+                table.add_row(src.name, status)
+        else:
+            resolved_prime = prime_name or input_path.stem
+            json_dir = raw_json_root / safe_slug(resolved_prime)
+            json_path = json_dir / f"0000_{safe_slug(input_path.stem)}.json"
+            status = (
+                "[green]cached[/green]"
+                if cfg.cache and json_path.exists()
+                else "[yellow]will transcribe[/yellow]"
+            )
+            table.add_row(input_path.name, status)
+
+        console.print(table)
+        console.print(
+            f"\nDevice: [bold]{device}[/bold]  "
+            f"Model: [bold]{cfg.transcription.model}[/bold]  "
+            f"Diarize: {cfg.diarization.enabled}  "
+            f"Cache: {cfg.cache}"
+        )
+
+    # ------------------------------------------------------------------
+    # Main pipeline
+    # ------------------------------------------------------------------
 
     def run(
         self,
