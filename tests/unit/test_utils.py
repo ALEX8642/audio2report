@@ -7,7 +7,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from audio2report.hardware import DeviceInfo, HardwareReport
-from audio2report.utils import pick_device, resolve_backend_and_device, validate_backend_device
+from audio2report.utils import (
+    pick_device,
+    resolve_backend_and_device,
+    resolve_model,
+    validate_backend_device,
+)
 
 
 def _fake_openvino(available_devices: list[str]):
@@ -232,3 +237,92 @@ class TestResolveBackendAndDevice:
         _patch_capabilities(monkeypatch, cuda=False, whisperx=True)
         with pytest.raises(RuntimeError, match="not available"):
             resolve_backend_and_device("whisperx", "cuda")
+
+
+# ---------------------------------------------------------------------------
+# resolve_model — auto/explicit model-size resolution, and openvino's
+# short-name → HF-repo-id mapping
+# ---------------------------------------------------------------------------
+
+class TestResolveModel:
+    def test_explicit_short_name_passthrough_for_whisperx(self):
+        assert resolve_model("medium", "whisperx", "cpu") == "medium"
+
+    def test_explicit_short_name_passthrough_for_torch_whisper(self):
+        assert resolve_model("tiny", "torch_whisper", "cuda") == "tiny"
+
+    def test_explicit_short_name_mapped_to_openvino_repo_id(self):
+        assert resolve_model("large-v3", "openvino", "gpu") == "OpenVINO/whisper-large-v3-int8-ov"
+
+    def test_explicit_repo_id_passthrough_for_openvino(self):
+        """A caller who already supplied a full HF repo id (e.g. a custom
+        NPU-tuned model like configs/intel_npu.yaml's) must not be
+        remapped — only known WhisperX-style short names are translated."""
+        custom = "FluidInference/whisper-large-v3-turbo-int4-ov-npu"
+        assert resolve_model(custom, "openvino", "npu") == custom
+
+    def test_auto_ties_model_size_to_recommend_model_size(self, monkeypatch):
+        monkeypatch.setattr("audio2report.hardware.recommend_model_size", lambda device: "small")
+        assert resolve_model("auto", "whisperx", "cpu") == "small"
+
+    def test_auto_maps_recommended_size_to_openvino_repo_id(self, monkeypatch):
+        monkeypatch.setattr("audio2report.hardware.recommend_model_size", lambda device: "medium")
+        assert resolve_model("auto", "openvino", "npu") == "OpenVINO/whisper-medium-int8-ov"
+
+    def test_auto_passes_device_through_to_recommend_model_size(self, monkeypatch):
+        seen = {}
+
+        def _fake(device):
+            seen["device"] = device
+            return "base"
+
+        monkeypatch.setattr("audio2report.hardware.recommend_model_size", _fake)
+        resolve_model("auto", "whisperx", "cuda")
+        assert seen["device"] == "cuda"
+
+
+# ---------------------------------------------------------------------------
+# hardware.recommend_model_size — memory-tiered model-size selection
+# ---------------------------------------------------------------------------
+
+class TestRecommendModelSize:
+    def _gb(self, n: float) -> int:
+        return int(n * 1024**3)
+
+    def test_cuda_uses_vram_not_system_ram(self, monkeypatch):
+        from audio2report import hardware
+
+        monkeypatch.setattr(hardware, "_cuda_vram_bytes", lambda: self._gb(12))
+        monkeypatch.setattr(hardware, "_system_ram_bytes", lambda: self._gb(2))
+        assert hardware.recommend_model_size("cuda") == "large-v3"
+
+    def test_non_cuda_uses_system_ram(self, monkeypatch):
+        from audio2report import hardware
+
+        monkeypatch.setattr(hardware, "_cuda_vram_bytes", lambda: self._gb(12))
+        monkeypatch.setattr(hardware, "_system_ram_bytes", lambda: self._gb(2))
+        assert hardware.recommend_model_size("cpu") == "small"
+
+    def test_tiers(self, monkeypatch):
+        from audio2report import hardware
+
+        cases = {
+            0.5: "tiny",
+            1.0: "base",
+            2.0: "small",
+            5.0: "medium",
+            10.0: "large-v3",
+            32.0: "large-v3",
+        }
+        for gb, expected in cases.items():
+            monkeypatch.setattr(hardware, "_system_ram_bytes", lambda: self._gb(gb))
+            assert hardware.recommend_model_size("cpu") == expected
+
+    def test_unknown_memory_defaults_to_small_not_large(self, monkeypatch):
+        """Regression: the whole point of this function is to never fall
+        back to the previous hardcoded large-v3 default when memory can't
+        be determined at all."""
+        from audio2report import hardware
+
+        monkeypatch.setattr(hardware, "_system_ram_bytes", lambda: None)
+        assert hardware.recommend_model_size("cpu") == "small"

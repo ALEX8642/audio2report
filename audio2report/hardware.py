@@ -8,6 +8,7 @@ Streamlit UI to call it directly on every render.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 # Priority order for "auto"/None device selection.  NPUs are lower-throughput
@@ -203,3 +204,95 @@ def detect_hardware() -> HardwareReport:
     devices = [cpu_info, cuda_info, gpu_info, npu_info]
     recommended = HardwareReport(devices=devices, recommended="cpu").best_available()
     return HardwareReport(devices=devices, recommended=recommended)
+
+
+# ---------------------------------------------------------------------------
+# Memory detection — backs "auto" Whisper model-size selection
+# (TranscriptionConfig.model="auto"; see utils.resolve_model). Detecting
+# *device* memory, not just device presence, matters here: pointing a
+# low-memory machine at the hardcoded "large-v3" that used to be the
+# unconditional default is a real OOM risk, not a hypothetical one.
+# ---------------------------------------------------------------------------
+
+def _system_ram_bytes() -> int | None:
+    """
+    Best-effort total system RAM. Used as the memory budget for every
+    device except CUDA: CPU obviously shares system RAM, and on the Intel
+    hardware this project targets (Arc iGPU, AI Boost NPU) the GPU/NPU are
+    integrated and share system RAM too — there is no separate VRAM pool to
+    query, and no reliable cross-platform OpenVINO API to query one even if
+    there were on some discrete-GPU machine.
+    """
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except (ValueError, OSError, AttributeError):
+        pass
+
+    try:
+        import ctypes
+
+        class _MemoryStatusEx(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        stat = _MemoryStatusEx()
+        stat.dwLength = ctypes.sizeof(_MemoryStatusEx)
+        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))  # type: ignore[attr-defined]
+        return int(stat.ullTotalPhys)
+    except Exception:
+        return None
+
+
+def _cuda_vram_bytes() -> int | None:
+    """Total VRAM on CUDA device 0, or None if CUDA isn't usable."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return int(torch.cuda.get_device_properties(0).total_memory)
+    except Exception:
+        pass
+    return None
+
+
+# Minimum bytes of available memory required to safely run each model size,
+# ordered largest-first — approximate, with headroom for OS/runtime
+# overhead beyond the model weights themselves. Deliberately conservative:
+# picking a smaller model than strictly necessary just costs some accuracy,
+# while picking one too large OOMs or crashes the run outright.
+_MODEL_MEMORY_TIERS: list[tuple[int, str]] = [
+    (10 * 1024**3, "large-v3"),
+    (5 * 1024**3, "medium"),
+    (2 * 1024**3, "small"),
+    (1 * 1024**3, "base"),
+]
+_SMALLEST_MODEL = "tiny"
+
+
+def recommend_model_size(device: str) -> str:
+    """
+    Recommend a WhisperX-style short model name (``"tiny"`` .. ``"large-v3"``)
+    tiered to the memory actually available to *device* — CUDA VRAM for
+    ``"cuda"``, system RAM for everything else (see ``_system_ram_bytes``).
+
+    When memory can't be determined at all (detection failed, unsupported
+    platform), this deliberately returns a mid-sized, safe default
+    (``"small"``) rather than the previous hardcoded ``"large-v3"`` — the
+    exact failure mode this function exists to avoid.
+    """
+    available = _cuda_vram_bytes() if device == "cuda" else _system_ram_bytes()
+    if available is None:
+        return "small"
+    for threshold, size in _MODEL_MEMORY_TIERS:
+        if available >= threshold:
+            return size
+    return _SMALLEST_MODEL

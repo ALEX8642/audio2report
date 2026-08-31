@@ -256,6 +256,44 @@ def auto_compute_type(compute_type: str, device: str) -> str:
     return compute_type
 
 
+# WhisperX-style short names that the openvino backend cannot load directly
+# — it needs a Hugging Face repo id of a pre-converted OpenVINO IR model
+# instead. Confirmed via the HF Hub that a real "OpenVINO/whisper-{size}-
+# int8-ov" repo exists for every one of these sizes.
+_OPENVINO_MODEL_SIZES = {"tiny", "base", "small", "medium", "large-v2", "large-v3"}
+
+
+def _openvino_repo_id(short_name: str) -> str:
+    return f"OpenVINO/whisper-{short_name}-int8-ov"
+
+
+def resolve_model(model_pref: str, backend: str, device: str) -> str:
+    """
+    Resolve *model_pref* against *backend*/*device*, mirroring
+    ``resolve_backend_and_device``'s auto/explicit split:
+
+    - ``"auto"``: pick a model size tiered to available VRAM/RAM for
+      *device* (see ``hardware.recommend_model_size``) instead of always
+      pointing every machine at the same fixed size.
+    - An explicit size (``"medium"``, ``"large-v3"``, ...): honored as
+      given, never silently upgraded/downgraded — same philosophy as an
+      explicit device request.
+
+    Either way, a resulting WhisperX-style short name is then mapped to the
+    openvino backend's HF-repo-id convention if *backend* is ``"openvino"``
+    — that backend cannot load a short name directly. A value that isn't a
+    known short name (e.g. an HF repo id the user already supplied, such as
+    a custom NPU-tuned model) is passed through unchanged.
+    """
+    from audio2report.hardware import recommend_model_size
+
+    size = recommend_model_size(device) if model_pref == "auto" else model_pref
+
+    if backend == "openvino" and size in _OPENVINO_MODEL_SIZES:
+        return _openvino_repo_id(size)
+    return size
+
+
 # ---------------------------------------------------------------------------
 # Time formatting
 # ---------------------------------------------------------------------------
