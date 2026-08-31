@@ -18,7 +18,7 @@ transcription:
   device: null              # null = auto-detect (cuda if available, else cpu)
 
 diarization:
-  enabled: false
+  enabled: true
   hf_token: null            # null = read from HF_TOKEN environment variable
 
 alignment:

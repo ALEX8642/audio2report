@@ -27,8 +27,8 @@ class TestDefaultConfig:
     def test_default_model(self):
         assert Config().transcription.model == "auto"
 
-    def test_default_diarization_disabled(self):
-        assert Config().diarization.enabled is False
+    def test_default_diarization_enabled(self):
+        assert Config().diarization.enabled is True
 
     def test_default_deduplication_enabled(self):
         assert Config().deduplication.enabled is True

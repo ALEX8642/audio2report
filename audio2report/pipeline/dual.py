@@ -130,6 +130,15 @@ class DualMicPipeline:
             f"Cache: {cfg.cache}"
         )
 
+        from audio2report.transcription._diarize import preflight_diarization
+
+        warning = preflight_diarization(cfg.diarization)
+        if warning:
+            console.print(
+                f"[yellow]⚠ {warning} The real run will skip diarization and "
+                f"continue rather than fail.[/yellow]"
+            )
+
     # ------------------------------------------------------------------
     # Main pipeline
     # ------------------------------------------------------------------
@@ -169,6 +178,13 @@ class DualMicPipeline:
         cfg.transcription.model = resolve_model(cfg.transcription.model, resolved_backend, device)
         logger.info(f"Device: [bold]{device}[/bold]")
         logger.info(f"Prime folders: {[p.name for p in prime_folders]}")
+
+        from audio2report.transcription._diarize import preflight_diarization
+
+        diarization_warning = preflight_diarization(cfg.diarization)
+        if diarization_warning:
+            logger.warning(f"{diarization_warning} Continuing without diarization for this run.")
+            cfg.diarization.enabled = False
 
         # Build file records and normalise audio
         folder_records: dict[str, list[AudioFileRecord]] = {}

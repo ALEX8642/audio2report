@@ -112,6 +112,15 @@ class SingleMicPipeline:
             f"Cache: {cfg.cache}"
         )
 
+        from audio2report.transcription._diarize import preflight_diarization
+
+        warning = preflight_diarization(cfg.diarization)
+        if warning:
+            console.print(
+                f"[yellow]⚠ {warning} The real run will skip diarization and "
+                f"continue rather than fail.[/yellow]"
+            )
+
     # ------------------------------------------------------------------
     # Main pipeline
     # ------------------------------------------------------------------
@@ -151,6 +160,13 @@ class SingleMicPipeline:
         cfg.transcription.backend = resolved_backend
         cfg.transcription.model = resolve_model(cfg.transcription.model, resolved_backend, device)
         logger.info(f"Device: [bold]{device}[/bold]")
+
+        from audio2report.transcription._diarize import preflight_diarization
+
+        diarization_warning = preflight_diarization(cfg.diarization)
+        if diarization_warning:
+            logger.warning(f"{diarization_warning} Continuing without diarization for this run.")
+            cfg.diarization.enabled = False
 
         # Build file records
         if input_path.is_dir():

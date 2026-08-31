@@ -43,7 +43,7 @@ class TranscriptionConfig(BaseModel):
 
 
 class DiarizationConfig(BaseModel):
-    enabled: bool = False
+    enabled: bool = True
     hf_token: str | None = None  # None → falls back to HF_TOKEN env var
 
     def resolved_token(self) -> str | None:

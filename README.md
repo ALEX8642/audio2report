@@ -241,7 +241,7 @@ audio2report dual meeting/ --config my_config.yaml
 | `transcription` | `language` | `null` | Force language (null = auto-detect) |
 | `transcription` | `compute_type` | `float16` | `float16` (GPU) or `int8` (CPU) — auto-downgraded |
 | `transcription` | `device` | `null` | `cuda` or `cpu` (null = auto-detect) |
-| `diarization` | `enabled` | `false` | Enable pyannote.audio speaker roles |
+| `diarization` | `enabled` | `true` | Enable pyannote.audio speaker roles (skipped with a warning if no HF token is available) |
 | `diarization` | `hf_token` | `null` | HuggingFace token (or `HF_TOKEN` env var) |
 | `alignment` | `anchor_sim_threshold` | `0.90` | Min text similarity to use as clock anchor |
 | `alignment` | `min_anchor_text_len` | `25` | Min text length for anchor candidates |
@@ -262,7 +262,7 @@ audio2report dual meeting/ --config my_config.yaml
 
 | File | Best for |
 |---|---|
-| `configs/default.yaml` | Hardware-auto backend/device/model, no diarization |
+| `configs/default.yaml` | Hardware-auto backend/device/model, diarization enabled |
 | `configs/cpu_fast.yaml` | CPU-only machines (medium model, int8) |
 | `configs/gpu_full.yaml` | GPU with diarization enabled |
 | `configs/intel_gpu.yaml` | Intel Arc iGPU (OpenVINO backend), diarization enabled |

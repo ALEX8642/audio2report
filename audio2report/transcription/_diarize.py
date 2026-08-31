@@ -56,6 +56,25 @@ def resolve_diarization_device() -> str:
     return "cpu"
 
 
+def preflight_diarization(diarization_cfg: Any) -> str | None:
+    """
+    Check *diarization_cfg* for a problem ``run_diarization`` would
+    otherwise only discover deep inside a per-file transcribe loop — after
+    potentially transcribing every other file first. Returns a warning
+    message if diarization is enabled but no HF token is available
+    (``run_diarization`` would raise ``RuntimeError`` there), or ``None``
+    if there's nothing to flag (diarization off, or a token is present).
+    """
+    if not diarization_cfg.enabled:
+        return None
+    if diarization_cfg.resolved_token():
+        return None
+    return (
+        "Diarization is enabled but no Hugging Face token is available "
+        "(pass --hf-token or set the HF_TOKEN environment variable)."
+    )
+
+
 def run_diarization(
     wav_path: Path,
     asr_result: dict[str, Any],

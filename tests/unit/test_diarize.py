@@ -12,7 +12,12 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from audio2report.transcription._diarize import resolve_diarization_device, run_diarization
+from audio2report.config import DiarizationConfig
+from audio2report.transcription._diarize import (
+    preflight_diarization,
+    resolve_diarization_device,
+    run_diarization,
+)
 
 
 def _turn(start, end):
@@ -154,3 +159,30 @@ class TestResolveDiarizationDevice:
     def test_falls_back_to_cpu_when_torch_not_installed(self, monkeypatch):
         monkeypatch.setitem(sys.modules, "torch", None)
         assert resolve_diarization_device() == "cpu"
+
+
+class TestPreflightDiarization:
+    """Surfacing a missing-token problem before the per-file transcribe
+    loop starts, instead of run_diarization's RuntimeError only being
+    discovered deep inside it after other files may already be done."""
+
+    def test_disabled_returns_none(self, monkeypatch):
+        monkeypatch.delenv("HF_TOKEN", raising=False)
+        assert preflight_diarization(DiarizationConfig(enabled=False)) is None
+
+    def test_enabled_with_explicit_token_returns_none(self, monkeypatch):
+        monkeypatch.delenv("HF_TOKEN", raising=False)
+        cfg = DiarizationConfig(enabled=True, hf_token="tok")
+        assert preflight_diarization(cfg) is None
+
+    def test_enabled_with_env_token_returns_none(self, monkeypatch):
+        monkeypatch.setenv("HF_TOKEN", "env_tok")
+        cfg = DiarizationConfig(enabled=True, hf_token=None)
+        assert preflight_diarization(cfg) is None
+
+    def test_enabled_with_no_token_returns_warning(self, monkeypatch):
+        monkeypatch.delenv("HF_TOKEN", raising=False)
+        cfg = DiarizationConfig(enabled=True, hf_token=None)
+        warning = preflight_diarization(cfg)
+        assert warning is not None
+        assert "Hugging Face token" in warning
