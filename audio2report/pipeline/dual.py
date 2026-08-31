@@ -82,6 +82,10 @@ class DualMicPipeline:
         cfg = self.config
         console = get_console()
 
+        if not root.is_dir():
+            console.print(f"[red]Root path does not exist or is not a directory:[/red] {root}")
+            return
+
         prime_folders = find_prime_folders(root)
         if len(prime_folders) != 2:
             console.print(
@@ -96,6 +100,8 @@ class DualMicPipeline:
         cfg.transcription.backend = resolved_backend
         cfg.transcription.model = resolve_model(cfg.transcription.model, resolved_backend, device)
 
+        raw_json_root = out_root / "per_file_whisperx_json"
+
         table = Table(title="Dry run — files that would be processed", show_lines=True)
         table.add_column("Folder", style="cyan")
         table.add_column("File", style="white")
@@ -105,13 +111,10 @@ class DualMicPipeline:
             from audio2report.ingestion.discovery import list_audio_files
 
             files = list_audio_files(folder)
-            out_root / "normalized_audio"
-            raw_json_root = out_root / "per_file_whisperx_json"
+            slug = safe_slug(folder.name)
 
             for i, src in enumerate(files):
-                slug = safe_slug(folder.name)
-                from audio2report.utils import safe_slug as _slug
-                dst_stem = f"{i:04d}_{_slug(src.stem)}"
+                dst_stem = f"{i:04d}_{safe_slug(src.stem)}"
                 json_path = raw_json_root / slug / f"{dst_stem}.json"
                 if cfg.cache and json_path.exists():
                     status = "[green]cached[/green]"
