@@ -237,7 +237,7 @@ audio2report dual meeting/ --config my_config.yaml
 | *(root)* | `cache` | `true` | Skip re-transcription when per-file JSON exists |
 | `audio` | `inter_file_gap_sec` | `0.5` | Gap inserted between sequential files |
 | `audio` | `min_duration_sec` | `1.0` | Files shorter than this are skipped |
-| `transcription` | `model` | `large-v3` | WhisperX model size |
+| `transcription` | `model` | `auto` | WhisperX model size; `auto` tiers it to available VRAM/RAM |
 | `transcription` | `language` | `null` | Force language (null = auto-detect) |
 | `transcription` | `compute_type` | `float16` | `float16` (GPU) or `int8` (CPU) — auto-downgraded |
 | `transcription` | `device` | `null` | `cuda` or `cpu` (null = auto-detect) |
@@ -262,7 +262,7 @@ audio2report dual meeting/ --config my_config.yaml
 
 | File | Best for |
 |---|---|
-| `configs/default.yaml` | GPU with large-v3, no diarization |
+| `configs/default.yaml` | Hardware-auto backend/device/model, no diarization |
 | `configs/cpu_fast.yaml` | CPU-only machines (medium model, int8) |
 | `configs/gpu_full.yaml` | GPU with diarization enabled |
 | `configs/intel_gpu.yaml` | Intel Arc iGPU (OpenVINO backend), diarization enabled |

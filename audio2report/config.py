@@ -20,7 +20,8 @@ class TranscriptionConfig(BaseModel):
     # "auto" resolves to whichever installed backend can actually use the
     # best available hardware — see utils.resolve_backend_and_device.
     backend: str = "auto"              # auto | whisperx (CUDA/CPU) | openvino (CPU/Intel GPU/Intel NPU) | torch_whisper (CUDA/CPU)
-    model: str = "large-v3"            # whisperx: short model name; openvino: HF repo id of an OpenVINO IR model
+    model: str = "auto"                # auto | whisperx short model name | openvino HF repo id of an OpenVINO IR model
+                                        # "auto" tiers model size to available VRAM/RAM — see utils.resolve_model
     language: str | None = None
     compute_type: str = "float16"      # whisperx-only; ignored by the openvino backend
     batch_size: int = 8                # whisperx-only; ignored by the openvino backend

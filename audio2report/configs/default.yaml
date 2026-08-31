@@ -10,8 +10,8 @@ audio:
   min_duration_sec: 1.0     # files shorter than this are skipped before ASR
 
 transcription:
-  backend: whisperx
-  model: large-v3
+  backend: auto
+  model: auto               # auto = tier model size to available VRAM/RAM
   language: null            # null = auto-detect
   compute_type: float16     # float16 (GPU), int8 (CPU) — auto-downgraded on CPU
   batch_size: 8

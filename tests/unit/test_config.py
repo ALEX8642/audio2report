@@ -25,7 +25,7 @@ class TestDefaultConfig:
         assert Config().mode == "dual"
 
     def test_default_model(self):
-        assert Config().transcription.model == "large-v3"
+        assert Config().transcription.model == "auto"
 
     def test_default_diarization_disabled(self):
         assert Config().diarization.enabled is False

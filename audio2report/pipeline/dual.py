@@ -51,6 +51,7 @@ from audio2report.utils import (
     ensure_dir,
     load_json,
     resolve_backend_and_device,
+    resolve_model,
     safe_slug,
 )
 
@@ -93,6 +94,7 @@ class DualMicPipeline:
             cfg.transcription.backend, cfg.transcription.device
         )
         cfg.transcription.backend = resolved_backend
+        cfg.transcription.model = resolve_model(cfg.transcription.model, resolved_backend, device)
 
         table = Table(title="Dry run — files that would be processed", show_lines=True)
         table.add_column("Folder", style="cyan")
@@ -161,6 +163,7 @@ class DualMicPipeline:
             cfg.transcription.backend, cfg.transcription.device
         )
         cfg.transcription.backend = resolved_backend
+        cfg.transcription.model = resolve_model(cfg.transcription.model, resolved_backend, device)
         logger.info(f"Device: [bold]{device}[/bold]")
         logger.info(f"Prime folders: {[p.name for p in prime_folders]}")
 
