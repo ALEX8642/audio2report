@@ -7,6 +7,8 @@
 
 > Convert dual-microphone meeting recordings into clean, deduplicated transcripts and LLM-generated audit reports — fully local, no cloud required.
 
+**In use:** a work version of this tool has been used on four audits to date.
+
 ---
 
 ## What makes it different
